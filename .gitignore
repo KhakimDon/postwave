@@ -23,3 +23,6 @@ cloudflared.exe
 
 # Загруженные медиа
 backend/uploads/
+
+# TS build info
+*.tsbuildinfo

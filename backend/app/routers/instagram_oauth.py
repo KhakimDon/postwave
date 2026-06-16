@@ -157,11 +157,14 @@ def oauth_callback(
     error: str | None = None,
     state: str | None = None,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
-    """Резервный серверный колбэк (если redirect ведёт на бэкенд)."""
+    """Серверный колбэк от Instagram (без заголовка авторизации) — пользователя
+    определяем по state (туда положили user.id в /start)."""
     front = settings.frontend_url.rstrip("/")
     if error or not code:
+        return RedirectResponse(f"{front}/accounts?ig=error")
+    user = db.get(User, int(state)) if state and state.isdigit() else None
+    if not user:
         return RedirectResponse(f"{front}/accounts?ig=error")
     try:
         _complete_oauth(code, db, user)

@@ -15,35 +15,40 @@ import {
   Box,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { Logo } from "./Logo";
 import {
   IconLayoutDashboard,
   IconCalendarTime,
   IconCalendarMonth,
   IconPlugConnected,
   IconMessageChatbot,
-  IconWaveSine,
   IconSun,
   IconMoon,
+  IconLogout,
 } from "@tabler/icons-react";
 
 const NAV = [
-  { to: "/", label: "Обзор", icon: IconLayoutDashboard },
-  { to: "/publications", label: "Публикации", icon: IconCalendarTime },
-  { to: "/calendar", label: "Календарь", icon: IconCalendarMonth },
-  { to: "/accounts", label: "Аккаунты", icon: IconPlugConnected },
-  {
-    to: "/inbox",
-    label: "Входящие",
-    icon: IconMessageChatbot,
-    soon: true,
-  },
+  { to: "/", key: "nav_overview", icon: IconLayoutDashboard },
+  { to: "/publications", key: "nav_publications", icon: IconCalendarTime },
+  { to: "/calendar", key: "nav_calendar", icon: IconCalendarMonth },
+  { to: "/inbox", key: "nav_inbox", icon: IconMessageChatbot },
+  { to: "/accounts", key: "nav_accounts", icon: IconPlugConnected },
 ];
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout({
+  children,
+  onLogout,
+}: {
+  children: React.ReactNode;
+  onLogout?: () => void;
+}) {
   const [opened, { toggle, close }] = useDisclosure();
   const [navWidth] = useState(264);
   const location = useLocation();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const { t } = useTranslation();
 
   return (
     <AppShell
@@ -60,21 +65,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Group gap="sm" wrap="nowrap">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <Group gap={8} wrap="nowrap">
-              <ThemeIcon
-                size={34}
-                radius="md"
-                variant="gradient"
-                gradient={{ from: "brand.6", to: "grape.5", deg: 135 }}
-              >
-                <IconWaveSine size={20} />
-              </ThemeIcon>
-              <Text fw={800} fz="lg" visibleFrom="xs">
+              <Logo size={24} />
+              <Text fw={800} fz="lg" visibleFrom="xs" tt="uppercase" style={{ letterSpacing: 1 }}>
                 Postwave
               </Text>
             </Group>
           </Group>
 
           <Group gap="xs" wrap="nowrap">
+            <LanguageSwitcher />
             <Badge variant="light" color="brand" radius="sm" visibleFrom="sm">
               v0.1 · MVP
             </Badge>
@@ -92,6 +91,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
               </ActionIcon>
             </Tooltip>
+            {onLogout && (
+              <Tooltip label="Выйти">
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  radius="md"
+                  onClick={onLogout}
+                >
+                  <IconLogout size={18} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         </Group>
       </AppShell.Header>
@@ -107,14 +118,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <NavLink
                 key={item.to}
                 component={RouterNavLink}
-                to={item.soon ? "#" : item.to}
-                onClick={(e) => {
-                  if (item.soon) e.preventDefault();
-                  else close();
-                }}
+                to={item.to}
+                onClick={() => close()}
                 active={active}
-                label={item.label}
-                disabled={item.soon}
+                label={t(item.key)}
                 leftSection={
                   <ThemeIcon
                     variant={active ? "filled" : "light"}
@@ -124,13 +131,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   >
                     <item.icon size={17} />
                   </ThemeIcon>
-                }
-                rightSection={
-                  item.soon ? (
-                    <Badge size="xs" variant="light" color="gray">
-                      скоро
-                    </Badge>
-                  ) : undefined
                 }
                 variant="light"
                 mb={4}

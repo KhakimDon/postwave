@@ -9,3 +9,4 @@ httpx>=0.28
 python-jose[cryptography]>=3.5
 cryptography>=49.0
 python-multipart>=0.0.32
+telethon>=1.44

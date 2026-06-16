@@ -102,9 +102,13 @@ export function Accounts() {
   }, []);
 
   async function remove(id: number) {
-    await api.deleteAccount(id);
-    notifications.show({ color: "gray", message: "Аккаунт отключён" });
-    load();
+    try {
+      await api.deleteAccount(id);
+      notifications.show({ color: "gray", message: "Аккаунт отключён" });
+      load();
+    } catch (e) {
+      notifications.show({ color: "red", message: (e as Error).message });
+    }
   }
 
   return (
@@ -212,6 +216,11 @@ function ConnectModal({
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [guideOpen, guide] = useDisclosure(false);
+  const [botUsername, setBotUsername] = useState("");
+
+  useEffect(() => {
+    api.telegramBotInfo().then((r) => setBotUsername(r.username)).catch(() => {});
+  }, []);
 
   function set(key: string, val: string) {
     setCreds((c) => ({ ...c, [key]: val }));
@@ -282,25 +291,33 @@ function ConnectModal({
               <Text fz="sm" fw={600} mb={4}>
                 Как подключить за 1 минуту:
               </Text>
-              <List size="sm" spacing={2}>
-                <List.Item>Создайте бота у @BotFather → получите токен</List.Item>
-                <List.Item>Добавьте бота администратором в ваш канал</List.Item>
+              <List size="sm" spacing={4} type="ordered">
+                <List.Item>
+                  Добавьте нашего бота{" "}
+                  {botUsername ? (
+                    <Anchor
+                      href={`https://t.me/${botUsername}`}
+                      target="_blank"
+                      fw={700}
+                    >
+                      @{botUsername}
+                    </Anchor>
+                  ) : (
+                    <b>(бот настраивается…)</b>
+                  )}{" "}
+                  в свой канал
+                </List.Item>
+                <List.Item>
+                  Назначьте его <b>администратором</b> с правом «Публикация
+                  сообщений»
+                </List.Item>
                 <List.Item>Укажите @username канала ниже</List.Item>
               </List>
-              <GuideToggle opened={guideOpen} onToggle={guide.toggle} />
             </Alert>
-            <Collapse in={guideOpen}>
-              <TelegramGuide />
-            </Collapse>
             <TextInput
-              label="Bot Token"
-              placeholder="123456:ABC-DEF…"
-              value={creds.bot_token ?? ""}
-              onChange={(e) => set("bot_token", e.currentTarget.value)}
-            />
-            <TextInput
-              label="Канал (chat_id)"
+              label="Канал"
               placeholder="@my_channel"
+              description="Публичный канал — @username. Приватный — числовой id вида -100…"
               value={creds.chat_id ?? ""}
               onChange={(e) => set("chat_id", e.currentTarget.value)}
             />
@@ -492,47 +509,6 @@ function Step({
         )}
       </Box>
     </Group>
-  );
-}
-
-function TelegramGuide() {
-  return (
-    <Box
-      p="md"
-      mt="xs"
-      style={{
-        borderRadius: "var(--mantine-radius-md)",
-        border: "1px solid var(--mantine-color-gray-3)",
-        background: "var(--mantine-color-gray-0)",
-      }}
-    >
-      <Stack gap="md">
-        <Step n={1} title="Создайте бота в @BotFather">
-          Откройте в Telegram{" "}
-          <Anchor href="https://t.me/BotFather" target="_blank">
-            @BotFather
-          </Anchor>{" "}
-          → команда <Code>/newbot</Code> → задайте имя и username. В ответ придёт{" "}
-          <b>токен</b> вида <Code>123456789:AAExxxxxxxxxxxxxxxxxx</Code> — это и
-          есть поле <Code>Bot Token</Code>.
-        </Step>
-        <Step n={2} title="Добавьте бота админом в канал">
-          В канале: <b>Управление каналом → Администраторы → Добавить
-          администратора</b> → найдите своего бота по username → включите право{" "}
-          <b>«Публикация сообщений»</b>. Без прав админа бот постить не сможет.
-        </Step>
-        <Step n={3} title="Укажите канал (chat_id)">
-          Для <b>публичного</b> канала это его username с «@», например{" "}
-          <Code>@my_shop</Code>. Для <b>приватного</b> канала нужен числовой id
-          (начинается с <Code>-100…</Code>) — его поможем получить позже.
-        </Step>
-      </Stack>
-      <Divider my="sm" />
-      <Text fz="xs" c="dimmed">
-        💡 Бот — это «робот-постер». Ваш личный аккаунт не используется, пароль не
-        нужен.
-      </Text>
-    </Box>
   );
 }
 

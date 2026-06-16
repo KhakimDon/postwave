@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_current_user
 from ..db import get_db
-from ..models import Platform, SocialAccount, User
+from ..models import Platform, PostTarget, SocialAccount, User
 from ..schemas import AccountCreate, AccountOut
 from ..services import instagram, telegram
 from ..services.crypto import encrypt_credentials
@@ -26,10 +26,18 @@ def connect_account(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Проверяем креденшелы вызовом площадки до сохранения
+    # Проверяем доступ до сохранения. Для Telegram — единый бот Postwave:
+    # храним только chat_id, токен берётся из конфига при публикации.
+    creds = payload.credentials
+    display_name = payload.display_name
     try:
         if payload.platform == Platform.telegram_bot:
-            telegram.verify(payload.credentials)
+            chat_id = (payload.credentials.get("chat_id") or "").strip()
+            if not chat_id:
+                raise ValueError("Укажите @username канала")
+            title = telegram.verify_channel(chat_id)
+            creds = {"chat_id": chat_id}
+            display_name = display_name or title
         elif payload.platform == Platform.instagram:
             instagram.verify(payload.credentials)
     except Exception as exc:  # noqa: BLE001
@@ -38,13 +46,20 @@ def connect_account(
     account = SocialAccount(
         user_id=user.id,
         platform=payload.platform,
-        display_name=payload.display_name,
-        credentials_enc=encrypt_credentials(payload.credentials),
+        display_name=display_name,
+        credentials_enc=encrypt_credentials(creds),
     )
     db.add(account)
     db.commit()
     db.refresh(account)
     return account
+
+
+@router.get("/telegram-bot")
+def telegram_bot_info():
+    """Инфо о едином боте Postwave (для подсказки 'добавьте @X админом')."""
+    username = telegram.bot_username()
+    return {"username": username, "configured": bool(username)}
 
 
 @router.delete("/{account_id}", status_code=204)
@@ -60,5 +75,9 @@ def delete_account(
     )
     if not account:
         raise HTTPException(404, "Аккаунт не найден")
+    # сначала убираем ссылки из публикаций (иначе NOT NULL у post_targets.account_id)
+    db.query(PostTarget).filter(PostTarget.account_id == account_id).delete(
+        synchronize_session=False
+    )
     db.delete(account)
     db.commit()

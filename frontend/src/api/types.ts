@@ -64,6 +64,25 @@ export interface PlatformOptions {
   instagram?: InstagramOptions;
 }
 
+export interface TgDialog {
+  id: number;
+  name: string;
+  is_user: boolean;
+  is_group: boolean;
+  is_channel: boolean;
+  unread: number;
+  last_message: string;
+  date: string | null;
+}
+
+export interface TgMessage {
+  id: number;
+  text: string;
+  out: boolean;
+  date: string | null;
+  media_type: "photo" | "video" | "audio" | "sticker" | "document" | null;
+}
+
 export interface PostCreate {
   content: string;
   media_urls: string[];

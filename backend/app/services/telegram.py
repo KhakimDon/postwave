@@ -18,10 +18,22 @@ from pathlib import Path
 
 import httpx
 
+from ..config import get_settings
+
 API = "https://api.telegram.org/bot{token}/{method}"
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 RETRIES = 3  # повторы при разовых сетевых сбоях (DNS/reset)
+settings = get_settings()
+
+
+def _token(credentials: dict | None = None) -> str:
+    """Токен бота: у аккаунта свой (старая схема) или единый бот Postwave."""
+    if credentials and credentials.get("bot_token"):
+        return credentials["bot_token"]
+    if not settings.telegram_bot_token:
+        raise TelegramError("Единый Telegram-бот не настроен (TELEGRAM_BOT_TOKEN).")
+    return settings.telegram_bot_token
 
 
 class TelegramError(Exception):
@@ -93,7 +105,7 @@ def publish(
 
     options: {"silent": bool, "no_preview": bool, "parse_mode": "MarkdownV2"|"HTML"|None}
     """
-    token = credentials["bot_token"]
+    token = _token(credentials)
     chat_id = credentials["chat_id"]
     options = options or {}
     silent = bool(options.get("silent"))
@@ -160,5 +172,47 @@ def publish(
 
 def verify(credentials: dict) -> str:
     """Проверяет токен и доступ. Возвращает имя бота."""
-    me = _call_json(credentials["bot_token"], "getMe", {})
+    me = _call_json(_token(credentials), "getMe", {})
     return me.get("username", "")
+
+
+def bot_username() -> str:
+    """Username единого бота Postwave (для подсказки 'добавьте @X админом')."""
+    if settings.telegram_bot_username:
+        return settings.telegram_bot_username.lstrip("@")
+    if not settings.telegram_bot_token:
+        return ""
+    try:
+        me = _call_json(settings.telegram_bot_token, "getMe", {})
+        return me.get("username", "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def verify_channel(chat_id: str) -> str:
+    """Проверяет, что единый бот добавлен АДМИНОМ в канал chat_id и может постить.
+    Возвращает название канала. Бросает TelegramError с понятным текстом."""
+    token = _token()  # единый бот
+    me = _call_json(token, "getMe", {})
+    bot_id = me["id"]
+
+    try:
+        chat = _call_json(token, "getChat", {"chat_id": chat_id})
+    except TelegramError:
+        raise TelegramError(
+            "Не вижу такой канал. Проверьте @username и что бот уже добавлен в канал."
+        )
+
+    member = _call_json(
+        token, "getChatMember", {"chat_id": chat_id, "user_id": bot_id}
+    )
+    status = member.get("status")
+    if status != "administrator":
+        raise TelegramError(
+            "Бот не админ канала. Добавьте бота администратором с правом «Публикация сообщений»."
+        )
+    if member.get("can_post_messages") is False:
+        raise TelegramError(
+            "У бота нет права «Публикация сообщений». Включите его в настройках администратора."
+        )
+    return chat.get("title") or chat.get("username") or str(chat_id)

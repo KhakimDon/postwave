@@ -51,3 +51,10 @@ def _run_lightweight_migrations() -> None:
             conn.execute(
                 text("ALTER TABLE posts ADD COLUMN platform_options JSON DEFAULT '{}'")
             )
+
+    if "users" in inspector.get_table_names():
+        ucols = {c["name"] for c in inspector.get_columns("users")}
+        with engine.begin() as conn:
+            for col in ("phone", "password_hash", "name"):
+                if col not in ucols:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR"))

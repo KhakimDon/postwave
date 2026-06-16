@@ -1,23 +1,24 @@
-"""Зависимости FastAPI.
+"""Зависимости FastAPI: текущий пользователь по JWT (Authorization: Bearer)."""
 
-ВРЕМЕННО (v1, dev): один демо-пользователь. Полноценный JWT-логин
-добавим в фазе аутентификации — структура уже готова (User в БД).
-"""
-
-from fastapi import Depends
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from .auth import decode_token
 from .db import get_db
 from .models import User
 
-DEMO_EMAIL = "demo@smm.local"
 
-
-def get_current_user(db: Session = Depends(get_db)) -> User:
-    user = db.query(User).filter(User.email == DEMO_EMAIL).first()
+def get_current_user(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Требуется вход")
+    token = authorization.split(" ", 1)[1].strip()
+    user_id = decode_token(token)
+    if user_id is None:
+        raise HTTPException(401, "Сессия истекла, войдите снова")
+    user = db.get(User, user_id)
     if not user:
-        user = User(email=DEMO_EMAIL)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        raise HTTPException(401, "Пользователь не найден")
     return user

@@ -19,9 +19,9 @@ export const theme = createTheme({
   colors: { brand },
   primaryShade: { light: 5, dark: 6 },
   fontFamily:
-    "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "Outfit, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   headings: {
-    fontFamily: "Inter, sans-serif",
+    fontFamily: "Outfit, sans-serif",
     fontWeight: "700",
   },
   defaultRadius: "md",

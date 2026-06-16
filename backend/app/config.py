@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     scheduler_interval_seconds: int = 30
 
+    # Единый бот Postwave: юзеры добавляют его админом в свой канал.
+    # Токен у @BotFather (один раз), username — для подсказки в UI.
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+
+    # MTProto (Telethon) для CRM-инбокса: юзер подключает СВОЙ аккаунт.
+    # api_id/api_hash берутся ОДИН раз на my.telegram.org.
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+
     # Instagram OAuth (бесплатно). Новый флоу «Instagram API with Instagram Login».
     # Берётся из приложения: Instagram → API setup with Instagram login.
     instagram_app_id: str = ""

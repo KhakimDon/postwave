@@ -21,6 +21,54 @@ body {
     var(--mantine-color-body);
 }
 
+/* Единый цвет плейсхолдера во всех полях входа (текст, пароль, телефон) */
+.login-input::placeholder,
+.pw-phone .PhoneInputInput::placeholder {
+  color: #ffffff;
+  opacity: 1;
+}
+
+/* Телефонный инпут — точь-в-точь как Mantine-инпут (как у пароля) */
+.pw-phone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--mantine-radius-default);
+  padding: 0 12px;
+  height: 36px;
+  transition: border-color 100ms ease;
+}
+.pw-phone:hover,
+.pw-phone:focus-within {
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+/* Mantine-инпуты на стекле: рамка при hover/focus — белая, а не синяя */
+.login-input:hover,
+.login-input:focus {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+.pw-phone .PhoneInputInput {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: var(--mantine-font-size-sm);
+  height: 100%;
+}
+.pw-phone .PhoneInputCountrySelect {
+  color: #111;
+}
+.pw-phone .PhoneInputCountryIcon {
+  box-shadow: none;
+}
+.pw-phone .PhoneInputCountrySelectArrow {
+  color: rgba(255, 255, 255, 0.7);
+  opacity: 1;
+}
+
 /* Кастомный мягкий скролл */
 ::-webkit-scrollbar {
   width: 10px;

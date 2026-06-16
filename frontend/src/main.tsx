@@ -8,10 +8,12 @@ import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/notifications/styles.css";
+import "flag-icons/css/flag-icons.min.css";
 import "./index.css";
 
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
+import "./i18n";
 import { theme } from "./theme";
 import { App } from "./App";
 
