@@ -26,3 +26,7 @@ backend/uploads/
 
 # TS build info
 *.tsbuildinfo
+
+# Telethon / секреты сессий
+*.session
+*.session-journal

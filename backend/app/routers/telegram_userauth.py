@@ -4,9 +4,12 @@
 Данные: /{id}/dialogs, /{id}/dialogs/{peer}/messages, .../send.
 """
 
+import json
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -123,14 +126,139 @@ async def login_password(
 @router.get("/{account_id}/dialogs")
 async def dialogs(
     account_id: int,
+    limit: int = 50,
+    offset: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     session = _session_of(db, user, account_id)
     try:
-        return await tu.list_dialogs(session)
+        return await tu.list_dialogs(session, limit=limit, offset=offset)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"Ошибка чтения диалогов: {e}")
+
+
+@router.get("/{account_id}/stream")
+async def stream(
+    account_id: int,
+    token: str | None = None,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    # EventSource не шлёт заголовок -> токен принимаем в query (?token=)
+    raw = token or (
+        authorization.split(" ", 1)[1] if authorization and " " in authorization else None
+    )
+    uid = decode_token(raw) if raw else None
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(401, "Требуется вход")
+    session = _session_of(db, user, account_id)
+
+    async def gen():
+        try:
+            async for ev in tu.event_stream(session):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except tu.SessionRevokedError:
+            yield f'data: {json.dumps({"type": "error", "reason": "session_revoked"})}\n\n'
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/{account_id}/dialogs/{dialog_id}/status")
+async def dialog_status(
+    account_id: int,
+    dialog_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = _session_of(db, user, account_id)
+    try:
+        return await tu.get_status(session, dialog_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Ошибка статуса: {e}")
+
+
+@router.get("/{account_id}/profile/{dialog_id}")
+async def profile(
+    account_id: int,
+    dialog_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = _session_of(db, user, account_id)
+    try:
+        return await tu.get_profile(session, dialog_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Ошибка профиля: {e}")
+
+
+@router.get("/{account_id}/profile/{dialog_id}/photo/{index}")
+async def profile_photo(
+    account_id: int,
+    dialog_id: int,
+    index: int,
+    token: str | None = None,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    raw = token or (
+        authorization.split(" ", 1)[1] if authorization and " " in authorization else None
+    )
+    uid = decode_token(raw) if raw else None
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(401, "Требуется вход")
+    session = _session_of(db, user, account_id)
+    try:
+        data = await tu.download_profile_photo_n(session, dialog_id, index)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Ошибка фото: {e}")
+    if not data:
+        raise HTTPException(404, "Нет фото")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.get("/{account_id}/avatar/{dialog_id}")
+async def avatar(
+    account_id: int,
+    dialog_id: int,
+    token: str | None = None,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    # <img> не шлёт заголовок -> принимаем токен и в query (?token=)
+    raw = token or (
+        authorization.split(" ", 1)[1] if authorization and " " in authorization else None
+    )
+    uid = decode_token(raw) if raw else None
+    user = db.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(401, "Требуется вход")
+    session = _session_of(db, user, account_id)
+    try:
+        data = await tu.download_avatar(session, dialog_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Ошибка аватара: {e}")
+    if not data:
+        raise HTTPException(404, "Нет аватара")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/{account_id}/dialogs/{dialog_id}/messages")
@@ -167,6 +295,7 @@ async def media(
     account_id: int,
     dialog_id: int,
     msg_id: int,
+    request: Request,
     token: str | None = None,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
@@ -184,4 +313,31 @@ async def media(
         data, mime = await tu.download_media(session, dialog_id, msg_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"Ошибка медиа: {e}")
-    return Response(content=data, media_type=mime)
+
+    total = len(data)
+    # Range-запросы: видео/аудио браузер тянет по кускам и без этого не играет/не мотает
+    range_header = request.headers.get("range")
+    m = re.match(r"bytes=(\d+)-(\d*)", range_header or "")
+    if m:
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else total - 1
+        end = min(end, total - 1)
+        if start > end:
+            start = 0
+        chunk = data[start : end + 1]
+        return Response(
+            content=chunk,
+            status_code=206,
+            media_type=mime,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(len(chunk)),
+                "Cache-Control": "private, max-age=3600",
+            },
+        )
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600"},
+    )

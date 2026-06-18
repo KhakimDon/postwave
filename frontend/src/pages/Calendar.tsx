@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useComposer } from "../composer";
 import {
   Box,
   Group,
@@ -11,6 +11,7 @@ import {
   ScrollArea,
   ThemeIcon,
   Badge,
+  SegmentedControl,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -20,28 +21,64 @@ import {
   IconBrandTelegram,
   IconBrandInstagram,
   IconCalendarMonth,
+  IconGripVertical,
+  IconCircleCheck,
+  IconLock,
 } from "@tabler/icons-react";
 import dayjs, { type Dayjs } from "dayjs";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Post, PostStatus } from "../api/types";
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
 const STATUS_COLOR: Record<PostStatus, string> = {
   draft: "var(--mantine-color-gray-5)",
-  scheduled: "var(--mantine-color-blue-5)",
+  scheduled: "#5b8cff",
   publishing: "var(--mantine-color-yellow-5)",
-  published: "var(--mantine-color-teal-5)",
+  published: "#14d2b4",
   failed: "var(--mantine-color-red-5)",
 };
 
-export function Calendar() {
-  const nav = useNavigate();
-  const [cursor, setCursor] = useState<Dayjs>(dayjs().startOf("month"));
+const STATUS_BADGE: Record<PostStatus, string> = {
+  draft: "gray",
+  scheduled: "blue",
+  publishing: "yellow",
+  published: "teal",
+  failed: "red",
+};
+
+type View = "month" | "week";
+
+export function Calendar({ embedded }: { embedded?: boolean } = {}) {
+  const { open } = useComposer();
+  const { t } = useTranslation();
+  const WEEKDAYS = [
+    t("calendar.mon"),
+    t("calendar.tue"),
+    t("calendar.wed"),
+    t("calendar.thu"),
+    t("calendar.fri"),
+    t("calendar.sat"),
+    t("calendar.sun"),
+  ];
+  const [view, setView] = useState<View>(() =>
+    localStorage.getItem("pw_cal_view") === "month" ? "month" : "week",
+  );
+  const [cursor, setCursor] = useState<Dayjs>(dayjs());
   const [posts, setPosts] = useState<Post[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  function changeView(v: View) {
+    setView(v);
+    localStorage.setItem("pw_cal_view", v);
+  }
+  function prev() {
+    setCursor((c) => (view === "month" ? c.subtract(1, "month") : c.subtract(1, "week")));
+  }
+  function next() {
+    setCursor((c) => (view === "month" ? c.add(1, "month") : c.add(1, "week")));
+  }
 
   async function load() {
     try {
@@ -55,8 +92,8 @@ export function Calendar() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 12000);
-    return () => clearInterval(t);
+    const tm = setInterval(load, 12000);
+    return () => clearInterval(tm);
   }, []);
 
   const accountPlatform = useMemo(() => {
@@ -65,16 +102,33 @@ export function Calendar() {
     return m;
   }, [accounts]);
 
-  // 6 недель от понедельника
-  const days = useMemo(() => {
-    const start = cursor.startOf("month").startOf("week");
+  // Понедельник недели, содержащей cursor
+  const weekStart = useMemo(() => {
+    const off = (cursor.day() + 6) % 7;
+    return cursor.subtract(off, "day").startOf("day");
+  }, [cursor]);
+
+  // 6 недель месяца (от понедельника)
+  const monthDays = useMemo(() => {
+    const first = cursor.startOf("month");
+    const offset = (first.day() + 6) % 7;
+    const start = first.subtract(offset, "day");
     return Array.from({ length: 42 }, (_, i) => start.add(i, "day"));
   }, [cursor]);
 
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => weekStart.add(i, "day")),
+    [weekStart],
+  );
+
+  const title =
+    view === "month"
+      ? cursor.format("MMMM YYYY")
+      : `${weekStart.format("D MMM")} – ${weekStart.add(6, "day").format("D MMM")}`;
+
   const scheduledPosts = posts.filter((p) => p.scheduled_at);
-  // «Без даты» — только то, что ещё можно запланировать (не отправленное)
   const unscheduled = posts.filter(
-    (p) => !p.scheduled_at && p.status !== "published" && p.status !== "publishing"
+    (p) => !p.scheduled_at && p.status !== "published" && p.status !== "publishing",
   );
 
   function postsForDay(day: Dayjs) {
@@ -87,30 +141,24 @@ export function Calendar() {
     const post = posts.find((p) => p.id === postId);
     if (!post) return;
     if (post.status === "published") {
-      notifications.show({ color: "gray", message: "Опубликованный пост перенести нельзя" });
+      notifications.show({ color: "gray", message: t("calendar.cantMovePublished") });
       return;
     }
-    // сохраняем время; для постов без даты — 12:00
     const base = post.scheduled_at ? dayjs(post.scheduled_at) : day.hour(12).minute(0);
-    const when = day
-      .hour(base.hour())
-      .minute(base.minute())
-      .second(0)
-      .millisecond(0);
+    const when = day.hour(base.hour()).minute(base.minute()).second(0).millisecond(0);
 
-    // оптимистично
     setPosts((prev) =>
       prev.map((p) =>
         p.id === postId
           ? { ...p, scheduled_at: when.toISOString(), status: "scheduled" }
-          : p
-      )
+          : p,
+      ),
     );
     try {
       await api.updatePost(postId, { scheduled_at: when.toISOString() });
       notifications.show({
         color: "teal",
-        message: `Перенесено на ${when.format("D MMMM, HH:mm")}`,
+        message: t("calendar.movedTo", { when: when.format("D MMMM, HH:mm") }),
       });
       load();
     } catch (e) {
@@ -121,53 +169,71 @@ export function Calendar() {
 
   const today = dayjs();
 
+  // Общий обработчик дроп-зоны дня
+  function dropProps(day: Dayjs, key: string) {
+    return {
+      onDragOver: (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOverKey(key);
+      },
+      onDragLeave: () => setDragOverKey((k) => (k === key ? null : k)),
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOverKey(null);
+        if (draggingId != null) reschedule(draggingId, day);
+        setDraggingId(null);
+      },
+    };
+  }
+
   return (
     <Box>
       <Group justify="space-between" mb="lg" wrap="wrap" gap="sm">
         <Group gap="sm">
           <Text fz={{ base: 22, sm: 26 }} fw={800} tt="capitalize">
-            {cursor.format("MMMM YYYY")}
+            {title}
           </Text>
           <Group gap={4}>
-            <ActionIcon
-              variant="default"
-              size="lg"
-              onClick={() => setCursor((c) => c.subtract(1, "month"))}
-            >
+            <ActionIcon variant="default" size="lg" onClick={prev}>
               <IconChevronLeft size={18} />
             </ActionIcon>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setCursor(dayjs().startOf("month"))}
-            >
-              Сегодня
+            <Button variant="default" size="sm" onClick={() => setCursor(dayjs())}>
+              {t("calendar.today")}
             </Button>
-            <ActionIcon
-              variant="default"
-              size="lg"
-              onClick={() => setCursor((c) => c.add(1, "month"))}
-            >
+            <ActionIcon variant="default" size="lg" onClick={next}>
               <IconChevronRight size={18} />
             </ActionIcon>
           </Group>
         </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => nav("/compose")}>
-          Новая публикация
-        </Button>
+        <Group gap="sm">
+          <SegmentedControl
+            size="sm"
+            value={view}
+            onChange={(v) => changeView(v as View)}
+            data={[
+              { value: "week", label: t("calendar.viewWeek") },
+              { value: "month", label: t("calendar.viewMonth") },
+            ]}
+          />
+          {!embedded && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => open()}>
+              {t("calendar.newBtn")}
+            </Button>
+          )}
+        </Group>
       </Group>
 
-      {/* Бэклог: посты без даты — перетащи в календарь */}
+      {/* Бэклог: посты без даты */}
       {unscheduled.length > 0 && (
-        <Paper withBorder radius="md" p="sm" mb="md">
+        <Paper radius="lg" p="sm" mb="md">
           <Group gap="xs" mb={8}>
-            <ThemeIcon size="sm" variant="light" color="gray">
+            <ThemeIcon size="sm" variant="light" color="grape">
               <IconCalendarMonth size={13} />
             </ThemeIcon>
             <Text fz="sm" fw={600}>
-              Без даты — перетащите в день
+              {t("calendar.backlogLabel")}
             </Text>
-            <Badge size="sm" variant="light" color="gray">
+            <Badge size="sm" variant="light" color="grape">
               {unscheduled.length}
             </Badge>
           </Group>
@@ -176,7 +242,8 @@ export function Calendar() {
               <PostChip
                 key={p.id}
                 post={p}
-                platforms={p.targets.map((t) => accountPlatform.get(t.account_id))}
+                platforms={p.targets.map((tg) => accountPlatform.get(tg.account_id))}
+                dragging={draggingId === p.id}
                 onDragStart={() => setDraggingId(p.id)}
                 onDragEnd={() => setDraggingId(null)}
                 compact
@@ -186,34 +253,82 @@ export function Calendar() {
         </Paper>
       )}
 
-      <ScrollArea>
-        <Box miw={720}>
-          {/* заголовок дней недели */}
-          <Box
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 6,
-              marginBottom: 6,
-            }}
-          >
-            {WEEKDAYS.map((w) => (
-              <Text key={w} fz="xs" fw={700} c="dimmed" ta="center">
-                {w}
-              </Text>
-            ))}
-          </Box>
+      {view === "month" ? (
+        <ScrollArea>
+          <Box miw={760}>
+            <Box
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 6,
+                marginBottom: 6,
+              }}
+            >
+              {WEEKDAYS.map((w) => (
+                <Text key={w} fz="xs" fw={700} c="dimmed" ta="center">
+                  {w}
+                </Text>
+              ))}
+            </Box>
 
-          {/* сетка дней */}
+            <Box
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 6,
+              }}
+            >
+              {monthDays.map((day) => {
+                const inMonth = day.month() === cursor.month();
+                const isToday = day.isSame(today, "day");
+                const key = day.format("YYYY-MM-DD");
+                const dayPosts = postsForDay(day);
+                const isOver = dragOverKey === key;
+
+                return (
+                  <Box
+                    key={key}
+                    {...dropProps(day, key)}
+                    style={dayCellStyle(isOver, isToday, inMonth, 124)}
+                  >
+                    <DayHeader
+                      day={day}
+                      isToday={isToday}
+                      onAdd={() => open(key)}
+                      addLabel={t("calendar.createThisDay")}
+                    />
+                    <Box style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {dayPosts.map((p) => (
+                        <PostChip
+                          key={p.id}
+                          post={p}
+                          platforms={p.targets.map((tg) =>
+                            accountPlatform.get(tg.account_id),
+                          )}
+                          dragging={draggingId === p.id}
+                          onDragStart={() => setDraggingId(p.id)}
+                          onDragEnd={() => setDraggingId(null)}
+                          compact
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        </ScrollArea>
+      ) : (
+        <ScrollArea>
           <Box
+            miw={760}
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 6,
+              gap: 8,
             }}
           >
-            {days.map((day) => {
-              const inMonth = day.month() === cursor.month();
+            {weekDays.map((day) => {
               const isToday = day.isSame(today, "day");
               const key = day.format("YYYY-MM-DD");
               const dayPosts = postsForDay(day);
@@ -222,86 +337,146 @@ export function Calendar() {
               return (
                 <Box
                   key={key}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverKey(key);
-                  }}
-                  onDragLeave={() => setDragOverKey((k) => (k === key ? null : k))}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragOverKey(null);
-                    if (draggingId != null) reschedule(draggingId, day);
-                    setDraggingId(null);
-                  }}
+                  {...dropProps(day, key)}
                   style={{
-                    minHeight: 116,
-                    borderRadius: 10,
-                    border: `1.5px solid ${
-                      isOver
-                        ? "var(--mantine-color-brand-5)"
-                        : "var(--mantine-color-gray-3)"
-                    }`,
-                    background: isOver
-                      ? "var(--mantine-color-brand-0)"
-                      : inMonth
-                      ? "var(--mantine-color-body)"
-                      : "var(--mantine-color-gray-0)",
-                    padding: 6,
-                    opacity: inMonth ? 1 : 0.55,
-                    transition: "border-color 120ms ease, background 120ms ease",
+                    ...dayCellStyle(isOver, isToday, true, 0),
+                    minHeight: "60vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    padding: 10,
                   }}
                 >
-                  <Group justify="space-between" mb={4} wrap="nowrap">
-                    <Box
-                      style={{
-                        width: 24,
-                        height: 24,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: "50%",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background: isToday
-                          ? "var(--mantine-color-brand-6)"
-                          : "transparent",
-                        color: isToday ? "#fff" : "var(--mantine-color-text)",
-                      }}
-                    >
-                      {day.date()}
+                  <Group justify="space-between" mb={8} wrap="nowrap">
+                    <Box>
+                      <Text fz="xs" fw={700} c="dimmed" tt="uppercase">
+                        {WEEKDAYS[(day.day() + 6) % 7]}
+                      </Text>
+                      <Group gap={6} align="center">
+                        <Box style={dayNumberStyle(isToday)}>{day.date()}</Box>
+                        {dayPosts.length > 0 && (
+                          <Badge size="xs" variant="light" color="gray">
+                            {dayPosts.length}
+                          </Badge>
+                        )}
+                      </Group>
                     </Box>
-                    <Tooltip label="Создать в этот день" withArrow>
+                    <Tooltip label={t("calendar.createThisDay")} withArrow>
                       <ActionIcon
-                        size="xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={() => nav(`/compose?date=${key}`)}
+                        size="sm"
+                        variant="light"
+                        color="brand"
+                        radius="md"
+                        onClick={() => open(key)}
                       >
-                        <IconPlus size={13} />
+                        <IconPlus size={14} />
                       </ActionIcon>
                     </Tooltip>
                   </Group>
 
-                  <Box style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <Box
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      overflowY: "auto",
+                    }}
+                  >
                     {dayPosts.map((p) => (
                       <PostChip
                         key={p.id}
                         post={p}
-                        platforms={p.targets.map((t) =>
-                          accountPlatform.get(t.account_id)
+                        platforms={p.targets.map((tg) =>
+                          accountPlatform.get(tg.account_id),
                         )}
+                        dragging={draggingId === p.id}
                         onDragStart={() => setDraggingId(p.id)}
                         onDragEnd={() => setDraggingId(null)}
                       />
                     ))}
+                    {dayPosts.length === 0 && (
+                      <Text fz="xs" c="dimmed" ta="center" mt="xl">
+                        {isOver ? t("inbox.dropHere") : "—"}
+                      </Text>
+                    )}
                   </Box>
                 </Box>
               );
             })}
           </Box>
-        </Box>
-      </ScrollArea>
+        </ScrollArea>
+      )}
     </Box>
+  );
+}
+
+function dayCellStyle(
+  isOver: boolean,
+  isToday: boolean,
+  inMonth: boolean,
+  minHeight: number,
+): React.CSSProperties {
+  return {
+    minHeight: minHeight || undefined,
+    borderRadius: 18,
+    border: `1px solid ${
+      isOver
+        ? "var(--accent-border)"
+        : isToday
+        ? "var(--accent-border)"
+        : "var(--border-1)"
+    }`,
+    background: isOver ? "var(--accent-soft)" : "var(--surface-1)",
+    backdropFilter: "blur(14px)",
+    WebkitBackdropFilter: "blur(14px)",
+    boxShadow: isOver
+      ? "0 0 30px -6px var(--glow-violet), inset 0 1px 0 0 rgba(255,255,255,0.08)"
+      : isToday
+      ? "0 0 24px -10px var(--glow-violet), inset 0 1px 0 0 rgba(255,255,255,0.06)"
+      : "inset 0 1px 0 0 rgba(255,255,255,0.04)",
+    padding: 7,
+    opacity: inMonth ? 1 : 0.4,
+    transition: "border-color 160ms ease, background 160ms ease, box-shadow 160ms ease",
+  };
+}
+
+function dayNumberStyle(isToday: boolean): React.CSSProperties {
+  return {
+    minWidth: 26,
+    height: 26,
+    paddingInline: 6,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+    fontSize: 14,
+    fontWeight: 800,
+    background: isToday ? "linear-gradient(135deg, #8a57fb, #4aa3ff)" : "transparent",
+    color: isToday ? "#fff" : "var(--mantine-color-text)",
+    boxShadow: isToday ? "0 0 16px -2px var(--glow-violet)" : "none",
+  };
+}
+
+function DayHeader({
+  day,
+  isToday,
+  onAdd,
+  addLabel,
+}: {
+  day: Dayjs;
+  isToday: boolean;
+  onAdd: () => void;
+  addLabel: string;
+}) {
+  return (
+    <Group justify="space-between" mb={4} wrap="nowrap">
+      <Box style={dayNumberStyle(isToday)}>{day.date()}</Box>
+      <Tooltip label={addLabel} withArrow>
+        <ActionIcon size="xs" variant="subtle" color="gray" onClick={onAdd}>
+          <IconPlus size={13} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
   );
 }
 
@@ -310,56 +485,166 @@ function PostChip({
   platforms,
   onDragStart,
   onDragEnd,
+  dragging,
   compact,
 }: {
   post: Post;
   platforms: (Account["platform"] | undefined)[];
   onDragStart: () => void;
   onDragEnd: () => void;
+  dragging?: boolean;
   compact?: boolean;
 }) {
-  const draggable = post.status !== "published";
+  const { t } = useTranslation();
+  const published = post.status === "published";
+  const draggable = !published;
   const time = post.scheduled_at ? dayjs(post.scheduled_at).format("HH:mm") : "";
   const hasIg = platforms.includes("instagram");
   const hasTg = platforms.some((p) => p && p !== "instagram");
+  const thumb = post.media_urls[0];
 
-  return (
-    <Tooltip
-      label={post.content?.slice(0, 80) || "(без текста)"}
-      withArrow
-      multiline
-      w={220}
-      openDelay={400}
-    >
-      <Box
-        draggable={draggable}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          padding: "3px 7px",
-          borderRadius: 7,
-          background: "var(--mantine-color-gray-0)",
-          borderLeft: `3px solid ${STATUS_COLOR[post.status]}`,
-          cursor: draggable ? "grab" : "default",
-          fontSize: 11,
-          minWidth: compact ? 130 : undefined,
-          boxShadow: "var(--mantine-shadow-xs)",
-        }}
+  // ===== Компактный чип (месяц / бэклог) =====
+  if (compact) {
+    return (
+      <Tooltip
+        label={post.content?.slice(0, 80) || t("common.noText")}
+        withArrow
+        multiline
+        w={220}
+        openDelay={450}
       >
-        {hasTg && <IconBrandTelegram size={12} color="#2aabee" />}
-        {hasIg && <IconBrandInstagram size={12} color="#d62976" />}
-        {time && (
-          <Text fz={10} fw={700} c="dimmed" style={{ flexShrink: 0 }}>
-            {time}
+        <Box
+          className="pw-chip"
+          draggable={draggable}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 8px",
+            borderRadius: 9,
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-1)",
+            borderLeft: `3px solid ${STATUS_COLOR[post.status]}`,
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            cursor: draggable ? "grab" : "default",
+            opacity: dragging ? 0.4 : 1,
+            minWidth: 130,
+            boxShadow: dragging
+              ? "none"
+              : `0 2px 10px -4px rgba(0,0,0,0.4), -6px 0 16px -12px ${STATUS_COLOR[post.status]}`,
+            transition: "transform 150ms ease, background 150ms ease, box-shadow 150ms ease",
+          }}
+        >
+          {published ? (
+            <IconCircleCheck size={12} color="#14d2b4" style={{ flexShrink: 0 }} />
+          ) : (
+            <IconGripVertical
+              size={12}
+              style={{ color: "var(--mantine-color-dimmed)", flexShrink: 0, cursor: "grab" }}
+            />
+          )}
+          {hasTg && <IconBrandTelegram size={12} color="#2aabee" style={{ flexShrink: 0 }} />}
+          {hasIg && <IconBrandInstagram size={12} color="#d62976" style={{ flexShrink: 0 }} />}
+          {time && (
+            <Text fz={10} fw={700} c="dimmed" style={{ flexShrink: 0 }}>
+              {time}
+            </Text>
+          )}
+          <Text fz={11} lineClamp={1} style={{ flex: 1 }}>
+            {post.content || t("common.noText")}
           </Text>
+        </Box>
+      </Tooltip>
+    );
+  }
+
+  // ===== Крупная карточка (неделя) =====
+  return (
+    <Box
+      className="pw-chip"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      style={{
+        position: "relative",
+        borderRadius: 14,
+        background: "var(--surface-2)",
+        border: "1px solid var(--border-1)",
+        borderLeft: `3px solid ${STATUS_COLOR[post.status]}`,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        padding: 9,
+        cursor: draggable ? "grab" : "default",
+        opacity: dragging ? 0.4 : 1,
+        boxShadow: dragging
+          ? "none"
+          : `0 4px 16px -8px rgba(0,0,0,0.45), -8px 0 20px -14px ${STATUS_COLOR[post.status]}`,
+        transition: "transform 160ms ease, background 160ms ease, box-shadow 160ms ease",
+      }}
+    >
+      <Group gap={9} wrap="nowrap" align="flex-start">
+        {thumb ? (
+          <img
+            src={thumb}
+            alt=""
+            style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
+          />
+        ) : (
+          <Box
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 10,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--surface-hover)",
+              color: "var(--mantine-color-dimmed)",
+            }}
+          >
+            {hasIg ? <IconBrandInstagram size={20} /> : <IconBrandTelegram size={20} />}
+          </Box>
         )}
-        <Text fz={11} lineClamp={1} style={{ flex: 1 }}>
-          {post.content || "(без текста)"}
-        </Text>
-      </Box>
-    </Tooltip>
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Group justify="space-between" wrap="nowrap" gap={4} mb={3}>
+            <Group gap={4} wrap="nowrap">
+              {hasTg && <IconBrandTelegram size={13} color="#2aabee" />}
+              {hasIg && <IconBrandInstagram size={13} color="#d62976" />}
+            </Group>
+            {time && (
+              <Text fz={11} fw={800} c="dimmed">
+                {time}
+              </Text>
+            )}
+          </Group>
+          <Text fz={12} lineClamp={2} lh={1.3}>
+            {post.content || t("common.noText")}
+          </Text>
+        </Box>
+      </Group>
+
+      <Group justify="space-between" wrap="nowrap" mt={8}>
+        <Badge
+          size="xs"
+          variant="light"
+          radius="sm"
+          color={STATUS_BADGE[post.status]}
+          leftSection={published ? <IconCircleCheck size={11} /> : undefined}
+        >
+          {t(`status.${post.status}`)}
+        </Badge>
+        {draggable ? (
+          <IconGripVertical size={14} style={{ color: "var(--mantine-color-dimmed)", cursor: "grab" }} />
+        ) : (
+          <Tooltip label={t("calendar.cantMovePublished")} withArrow>
+            <IconLock size={13} style={{ color: "var(--mantine-color-dimmed)" }} />
+          </Tooltip>
+        )}
+      </Group>
+    </Box>
   );
 }

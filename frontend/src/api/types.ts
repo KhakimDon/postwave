@@ -73,6 +73,7 @@ export interface TgDialog {
   unread: number;
   last_message: string;
   date: string | null;
+  online?: boolean;
 }
 
 export interface TgMessage {
@@ -81,6 +82,41 @@ export interface TgMessage {
   out: boolean;
   date: string | null;
   media_type: "photo" | "video" | "audio" | "sticker" | "document" | null;
+  read?: boolean; // для исходящих: прочитано ли собеседником
+  grouped_id?: number | null; // id альбома (одинаковый у фото одной группы)
+}
+
+export interface TgStatus {
+  kind:
+    | "online"
+    | "offline"
+    | "recently"
+    | "week"
+    | "month"
+    | "bot"
+    | "group"
+    | "unknown";
+  was_online?: string | null;
+  members?: number | null;
+}
+
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  color?: string | null;
+}
+
+export interface TgProfile {
+  name: string;
+  username: string | null;
+  phone: string | null;
+  bio: string | null;
+  photo_count: number;
+}
+
+export interface KanbanBoard {
+  columns: KanbanColumn[];
+  placements: Record<string, string>; // dialogId -> columnId
 }
 
 export interface PostCreate {

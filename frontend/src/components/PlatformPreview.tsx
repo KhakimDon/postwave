@@ -12,6 +12,7 @@ import {
   IconPlayerPlayFilled,
   IconMapPin,
 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import type { IgPostType, Platform } from "../api/types";
 
 export interface PreviewMedia {
@@ -77,7 +78,7 @@ export function PlatformPreview({
 }
 
 function initial(name?: string) {
-  return (name?.replace(/^@/, "")[0] ?? "К").toUpperCase();
+  return (name?.replace(/^@/, "")[0] ?? "#").toUpperCase();
 }
 
 /* ----------------------------- Telegram ----------------------------- */
@@ -90,7 +91,8 @@ function TelegramPreview({
   media: PreviewMedia[];
   name?: string;
 }) {
-  const channel = name?.replace(/^@/, "") ?? "ваш канал";
+  const { t } = useTranslation();
+  const channel = name?.replace(/^@/, "") ?? t("preview.tgChannel");
   const hasMedia = media.length > 0;
 
   return (
@@ -157,7 +159,7 @@ function TelegramPreview({
               c="#0f1419"
               style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             >
-              {content || "Текст поста появится здесь…"}
+              {content || t("preview.tgPlaceholder")}
             </Text>
             <Group gap={6} justify="flex-end" mt={4} c="#8a9aa9" wrap="nowrap">
               <IconShare3 size={13} />
@@ -253,6 +255,7 @@ function FeedPreview({
   carousel: boolean;
   location?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Box
       style={{
@@ -322,7 +325,7 @@ function FeedPreview({
           )}
         </Box>
       ) : (
-        <MediaPlaceholder h={300} text="Добавьте фото для ленты" />
+        <MediaPlaceholder h={300} text={t("preview.feedAddPhoto")} />
       )}
 
       <Group justify="space-between" px={12} pt={10}>
@@ -336,7 +339,7 @@ function FeedPreview({
 
       <Box px={12} pt={8} pb={12}>
         <Text fz="sm" fw={600} c="#262626" mb={2}>
-          Нравится: 1 248
+          {t("preview.feedLikes")}
         </Text>
         <Text
           fz="sm"
@@ -347,7 +350,7 @@ function FeedPreview({
           <Text span fw={600} fz="sm">
             {user}{" "}
           </Text>
-          {content || "Подпись к фото появится здесь…"}
+          {content || t("preview.igCaptionPlaceholder")}
         </Text>
       </Box>
     </Box>
@@ -363,6 +366,7 @@ function ReelsPreview({
   media: PreviewMedia[];
   user: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Box
       style={{
@@ -392,7 +396,7 @@ function ReelsPreview({
         >
           <IconPlayerPlayFilled size={40} />
           <Text fz="xs" c="gray.4" ta="center" px="md">
-            Загрузите вертикальное видео
+            {t("preview.reelsUpload")}
           </Text>
         </Box>
       )}
@@ -430,12 +434,12 @@ function ReelsPreview({
           </Text>
         </Group>
         <Text fz={11} c="#fff" lineClamp={2} style={{ whiteSpace: "pre-wrap" }}>
-          {content || "Подпись к Reels…"}
+          {content || t("preview.reelsCaptionPh")}
         </Text>
         <Group gap={4} mt={6} c="#fff">
           <IconMusic size={12} />
           <Text fz={10} c="#fff">
-            Оригинальный звук · {user}
+            {t("preview.reelsSound")} · {user}
           </Text>
         </Group>
       </Box>
@@ -450,6 +454,7 @@ function StoriesPreview({
   media: PreviewMedia[];
   user: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Box
       style={{
@@ -466,7 +471,7 @@ function StoriesPreview({
       {media[0] ? (
         <MediaView item={media[0]} h="100%" />
       ) : (
-        <MediaPlaceholder h={420} text="Фото или видео для Stories" />
+        <MediaPlaceholder h={420} text={t("preview.storiesPlaceholder")} />
       )}
 
       <Group gap={3} style={{ position: "absolute", top: 8, left: 8, right: 8 }}>
@@ -490,7 +495,7 @@ function StoriesPreview({
           {user}
         </Text>
         <Text fz={11} c="gray.3">
-          сейчас
+          {t("preview.storiesNow")}
         </Text>
       </Group>
 
@@ -500,7 +505,7 @@ function StoriesPreview({
       >
         <IconMapPin size={14} />
         <Text fz={11} c="#fff">
-          История · 24 часа
+          {t("preview.storiesFooter")}
         </Text>
       </Group>
     </Box>

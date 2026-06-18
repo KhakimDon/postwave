@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -81,6 +82,33 @@ class Post(Base):
     user: Mapped["User"] = relationship(back_populates="posts")
     targets: Mapped[list["PostTarget"]] = relationship(
         back_populates="post", cascade="all, delete-orphan"
+    )
+
+
+class KanbanBoard(Base):
+    """CRM-доска инбокса: колонки + раскладка чатов по колонкам.
+
+    Одна доска на пару (пользователь, telegram_user-аккаунт). Раскладка —
+    это карта dialog_id (строкой) -> column_id. Чат без записи показывается
+    в первой колонке. Хранится общим для всех устройств/команды.
+    """
+
+    __tablename__ = "kanban_boards"
+    __table_args__ = (
+        UniqueConstraint("user_id", "account_id", name="uq_kanban_user_account"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("social_accounts.id"), index=True
+    )
+    # список колонок: [{"id": "...", "title": "..."}], порядок важен
+    columns: Mapped[list] = mapped_column(JSON, default=list)
+    # карта dialog_id(str) -> column_id
+    placements: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
 

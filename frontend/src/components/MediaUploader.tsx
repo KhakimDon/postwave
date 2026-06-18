@@ -12,6 +12,7 @@ import {
 import { Dropzone, IMAGE_MIME_TYPE, MIME_TYPES } from "@mantine/dropzone";
 import { notifications } from "@mantine/notifications";
 import { IconUpload, IconX, IconPhotoPlus, IconVideo } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 
 export interface MediaItem {
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export function MediaUploader({ media, onChange }: Props) {
+  const { t } = useTranslation();
   async function handleDrop(files: File[]) {
     const items: MediaItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
@@ -69,7 +71,7 @@ export function MediaUploader({ media, onChange }: Props) {
         onReject={() =>
           notifications.show({
             color: "red",
-            message: "Только фото или mp4 до 25 МБ",
+            message: t("mediaUploader.rejectToast"),
           })
         }
       >
@@ -91,10 +93,10 @@ export function MediaUploader({ media, onChange }: Props) {
           </Dropzone.Idle>
           <Box>
             <Text fz="sm" fw={600}>
-              Перетащите фото/видео сюда
+              {t("mediaUploader.dropTitle")}
             </Text>
             <Text fz="xs" c="dimmed" mt={2}>
-              или нажмите · JPG, PNG, WEBP, GIF, MP4 · до 25 МБ
+              {t("mediaUploader.dropHint")}
             </Text>
           </Box>
         </Group>

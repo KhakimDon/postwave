@@ -80,3 +80,30 @@ class PostOut(BaseModel):
     @field_serializer("scheduled_at", "created_at")
     def _ser_dt(self, dt: datetime | None) -> str | None:
         return _iso_utc(dt)
+
+
+# ---------- Kanban (CRM-инбокс) ----------
+class KanbanColumn(BaseModel):
+    id: str
+    title: str
+    color: str | None = None
+
+
+class KanbanOut(BaseModel):
+    columns: list[KanbanColumn] = []
+    placements: dict[str, str] = {}
+
+
+class ColumnsUpdate(BaseModel):
+    columns: list[KanbanColumn]
+
+
+class PlacementUpdate(BaseModel):
+    dialog_id: str  # id чата (строкой — бывает большим/отрицательным)
+    column_id: str
+
+
+class KanbanBroadcast(BaseModel):
+    column_id: str
+    text: str = ""
+    media_urls: list[str] = []

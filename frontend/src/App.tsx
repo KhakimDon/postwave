@@ -1,38 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { Dashboard } from "./pages/Dashboard";
-import { Publications } from "./pages/Publications";
-import { Compose } from "./pages/Compose";
-import { Calendar } from "./pages/Calendar";
+import { Posts } from "./pages/Posts";
 import { Inbox } from "./pages/Inbox";
 import { Accounts } from "./pages/Accounts";
 import { Login } from "./pages/Login";
-import { tokenStore } from "./api/client";
+import { ComposerProvider } from "./composer";
+import { tokenStore, setUnauthorizedHandler } from "./api/client";
 
 export function App() {
   const [authed, setAuthed] = useState(() => !!tokenStore.get());
+
+  const logout = useCallback(() => {
+    tokenStore.clear();
+    setAuthed(false);
+  }, []);
+
+  // мягкий разлогин при 401 от API (без перезагрузки страницы)
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   if (!authed) {
     return <Login onAuth={() => setAuthed(true)} />;
   }
 
-  function logout() {
-    tokenStore.clear();
-    setAuthed(false);
-  }
-
   return (
-    <AppLayout onLogout={logout}>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/publications" element={<Publications />} />
-        <Route path="/compose" element={<Compose />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/inbox" element={<Inbox />} />
-        <Route path="/accounts" element={<Accounts />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AppLayout>
+    <ComposerProvider>
+      <AppLayout onLogout={logout}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/posts" element={<Posts />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/accounts" element={<Accounts />} />
+          {/* старые пути → единый раздел «Посты» */}
+          <Route path="/publications" element={<Navigate to="/posts" replace />} />
+          <Route path="/calendar" element={<Navigate to="/posts" replace />} />
+          <Route path="/compose" element={<Navigate to="/posts" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppLayout>
+    </ComposerProvider>
   );
 }

@@ -20,7 +20,6 @@ import {
   List,
   Collapse,
   Anchor,
-  Code,
   Divider,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -34,7 +33,6 @@ import {
   IconInfoCircle,
   IconHelpCircle,
   IconChevronDown,
-  IconExternalLink,
   IconCheck,
 } from "@tabler/icons-react";
 
@@ -43,11 +41,13 @@ const TELEGRAM_LOGO =
 const INSTAGRAM_LOGO =
   "https://upload.wikimedia.org/wikipedia/commons/9/95/Instagram_logo_2022.svg";
 import dayjs from "dayjs";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Platform } from "../api/types";
 import { PageHeader, EmptyState } from "../components/ui";
 
 export function Accounts() {
+  const { t } = useTranslation();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -75,7 +75,7 @@ export function Accounts() {
         .then((r) => {
           notifications.show({
             color: "teal",
-            message: `Instagram подключён ✅ (@${r.username})`,
+            message: t("accounts.igConnectedUser", { username: r.username }),
           });
           load();
         })
@@ -87,8 +87,8 @@ export function Accounts() {
 
     if (ig) {
       const map: Record<string, { color: string; message: string }> = {
-        connected: { color: "teal", message: "Instagram подключён ✅" },
-        error: { color: "red", message: "Не удалось подключить Instagram" },
+        connected: { color: "teal", message: t("accounts.igConnected") },
+        error: { color: "red", message: t("accounts.igFailed") },
       };
       const n = map[ig];
       if (n) notifications.show(n);
@@ -104,7 +104,7 @@ export function Accounts() {
   async function remove(id: number) {
     try {
       await api.deleteAccount(id);
-      notifications.show({ color: "gray", message: "Аккаунт отключён" });
+      notifications.show({ color: "gray", message: t("accounts.removedToast") });
       load();
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
@@ -114,14 +114,14 @@ export function Accounts() {
   return (
     <Box>
       <PageHeader
-        title="Аккаунты"
-        subtitle="Подключите Telegram-каналы и Instagram-профили. Пароли мы не храним."
+        title={t("accounts.title")}
+        subtitle={t("accounts.subtitle")}
         action={
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => setModalOpen(true)}
           >
-            Подключить
+            {t("accounts.connectBtn")}
           </Button>
         }
       />
@@ -136,15 +136,15 @@ export function Accounts() {
         <Card>
           <EmptyState
             icon={<IconPlugConnected size={32} />}
-            title="Нет подключённых аккаунтов"
-            description="Подключите первый Telegram-канал или Instagram-профиль, чтобы начать публиковать."
+            title={t("accounts.emptyTitle")}
+            description={t("accounts.emptyDesc")}
             action={
               <Button
                 mt="sm"
                 leftSection={<IconPlus size={16} />}
                 onClick={() => setModalOpen(true)}
               >
-                Подключить аккаунт
+                {t("accounts.emptyAction")}
               </Button>
             }
           />
@@ -172,7 +172,7 @@ export function Accounts() {
                       {a.display_name}
                     </Text>
                     <Text fz="xs" c="dimmed">
-                      Подключён {dayjs(a.created_at).format("DD.MM.YYYY")}
+                      {t("accounts.connectedOn", { date: dayjs(a.created_at).format("DD.MM.YYYY") })}
                     </Text>
                   </Box>
                 </Group>
@@ -185,7 +185,7 @@ export function Accounts() {
                 </ActionIcon>
               </Group>
               <Badge mt="md" variant="dot" color={a.is_active ? "teal" : "gray"}>
-                {a.is_active ? "Активен" : "Отключён"}
+                {a.is_active ? t("accounts.active") : t("accounts.inactive")}
               </Badge>
             </Card>
           ))}
@@ -210,6 +210,7 @@ function ConnectModal({
   onClose: () => void;
   onConnected: () => void;
 }) {
+  const { t } = useTranslation();
   const [platform, setPlatform] = useState<Platform>("telegram_bot");
   const [displayName, setDisplayName] = useState("");
   const [creds, setCreds] = useState<Record<string, string>>({});
@@ -251,7 +252,7 @@ function ConnectModal({
         display_name: displayName,
         credentials: creds,
       });
-      notifications.show({ color: "teal", message: "Аккаунт подключён ✅" });
+      notifications.show({ color: "teal", message: t("accounts.connectedToast") });
       setDisplayName("");
       setCreds({});
       onConnected();
@@ -267,7 +268,7 @@ function ConnectModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title={<Text fw={700}>Подключить аккаунт</Text>}
+      title={<Text fw={700}>{t("accounts.modalTitle")}</Text>}
       radius="lg"
       size="lg"
     >
@@ -275,8 +276,8 @@ function ConnectModal({
         <PlatformPicker value={platform} onChange={switchPlatform} />
 
         <TextInput
-          label="Название (для вас)"
-          placeholder={platform === "instagram" ? "@my_shop" : "Мой канал"}
+          label={t("accounts.nameLabel")}
+          placeholder={platform === "instagram" ? t("accounts.namePhIg") : t("accounts.namePhChannel")}
           value={displayName}
           onChange={(e) => setDisplayName(e.currentTarget.value)}
         />
@@ -289,11 +290,11 @@ function ConnectModal({
               icon={<IconInfoCircle size={18} />}
             >
               <Text fz="sm" fw={600} mb={4}>
-                Как подключить за 1 минуту:
+                {t("accounts.tgHowto")}
               </Text>
               <List size="sm" spacing={4} type="ordered">
                 <List.Item>
-                  Добавьте нашего бота{" "}
+                  {t("accounts.tgStep1a")}{" "}
                   {botUsername ? (
                     <Anchor
                       href={`https://t.me/${botUsername}`}
@@ -303,21 +304,18 @@ function ConnectModal({
                       @{botUsername}
                     </Anchor>
                   ) : (
-                    <b>(бот настраивается…)</b>
+                    <b>{t("accounts.tgBotPending")}</b>
                   )}{" "}
-                  в свой канал
+                  {t("accounts.tgStep1b")}
                 </List.Item>
-                <List.Item>
-                  Назначьте его <b>администратором</b> с правом «Публикация
-                  сообщений»
-                </List.Item>
-                <List.Item>Укажите @username канала ниже</List.Item>
+                <List.Item>{t("accounts.tgStep2")}</List.Item>
+                <List.Item>{t("accounts.tgStep3")}</List.Item>
               </List>
             </Alert>
             <TextInput
-              label="Канал"
-              placeholder="@my_channel"
-              description="Публичный канал — @username. Приватный — числовой id вида -100…"
+              label={t("accounts.channelLabel")}
+              placeholder={t("accounts.channelPh")}
+              description={t("accounts.channelDesc")}
               value={creds.chat_id ?? ""}
               onChange={(e) => set("chat_id", e.currentTarget.value)}
             />
@@ -329,9 +327,7 @@ function ConnectModal({
               color="grape"
               icon={<IconInfoCircle size={18} />}
             >
-              Нужен Instagram <b>Business/Creator</b> аккаунт, привязанный к
-              странице Facebook. Войдите официально — пароль мы не видим и не
-              храним.
+              {t("accounts.igAlert")}
             </Alert>
 
             <Button
@@ -343,10 +339,10 @@ function ConnectModal({
               onClick={oauthLogin}
               loading={oauthLoading}
             >
-              Войти через Instagram
+              {t("accounts.igLoginBtn")}
             </Button>
 
-            <Divider label="или вручную (для разработчиков)" labelPosition="center" />
+            <Divider label={t("accounts.orManual")} labelPosition="center" />
 
             <Box>
               <GuideToggle opened={guideOpen} onToggle={guide.toggle} />
@@ -355,14 +351,14 @@ function ConnectModal({
               </Collapse>
             </Box>
             <TextInput
-              label="Instagram User ID"
-              placeholder="178414…"
+              label={t("accounts.igUserIdLabel")}
+              placeholder={t("accounts.igUserIdPh")}
               value={creds.ig_user_id ?? ""}
               onChange={(e) => set("ig_user_id", e.currentTarget.value)}
             />
             <TextInput
-              label="Access Token"
-              placeholder="EAAG…"
+              label={t("accounts.tokenLabel")}
+              placeholder={t("accounts.tokenPh")}
               value={creds.access_token ?? ""}
               onChange={(e) => set("access_token", e.currentTarget.value)}
             />
@@ -371,14 +367,14 @@ function ConnectModal({
 
         <Group justify="flex-end" mt="sm">
           <Button variant="default" onClick={onClose}>
-            Отмена
+            {t("common.cancel")}
           </Button>
           <Button
             loading={loading}
             onClick={submit}
             disabled={!displayName.trim()}
           >
-            Подключить
+            {t("common.connect")}
           </Button>
         </Group>
       </Stack>
@@ -393,9 +389,10 @@ function PlatformPicker({
   value: Platform;
   onChange: (p: Platform) => void;
 }) {
+  const { t } = useTranslation();
   const options: { value: Platform; label: string; logo: string }[] = [
-    { value: "telegram_bot", label: "Telegram-канал", logo: TELEGRAM_LOGO },
-    { value: "instagram", label: "Instagram", logo: INSTAGRAM_LOGO },
+    { value: "telegram_bot", label: t("accounts.platformTelegram"), logo: TELEGRAM_LOGO },
+    { value: "instagram", label: t("accounts.platformInstagram"), logo: INSTAGRAM_LOGO },
   ];
 
   return (
@@ -458,6 +455,7 @@ function GuideToggle({
   opened: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="subtle"
@@ -476,7 +474,7 @@ function GuideToggle({
       }
       onClick={onToggle}
     >
-      {opened ? "Скрыть инструкцию" : "Подробнее: откуда взять"}
+      {opened ? t("accounts.guideHide") : t("accounts.guideShow")}
     </Button>
   );
 }
@@ -513,6 +511,8 @@ function Step({
 }
 
 function InstagramGuide() {
+  const { t } = useTranslation();
+  const steps = [1, 2, 3, 4, 5] as const;
   return (
     <Box
       p="md"
@@ -524,53 +524,15 @@ function InstagramGuide() {
       }}
     >
       <Stack gap="md">
-        <Step n={1} title="Переключите Instagram в Professional">
-          В приложении Instagram: <b>Настройки → Аккаунт → Тип аккаунта →
-          Переключиться на профессиональный</b> и выберите <b>Business</b> или{" "}
-          <b>Creator</b>. С личного аккаунта Graph API постить нельзя.
-        </Step>
-        <Step n={2} title="Привяжите аккаунт к странице Facebook">
-          Создайте (или возьмите существующую) <b>страницу Facebook</b> и в её
-          настройках свяжите с вашим Instagram-аккаунтом. Meta требует эту связку.
-        </Step>
-        <Step n={3} title="Создайте приложение Meta">
-          Зайдите на{" "}
-          <Anchor href="https://developers.facebook.com/apps" target="_blank">
-            developers.facebook.com/apps <IconExternalLink size={11} />
-          </Anchor>{" "}
-          → <b>Создать приложение</b> → тип <b>Business</b>. Затем добавьте
-          продукт <b>Instagram Graph API</b>.
-        </Step>
-        <Step n={4} title="Получите access_token">
-          Откройте{" "}
-          <Anchor
-            href="https://developers.facebook.com/tools/explorer"
-            target="_blank"
-          >
-            Graph API Explorer <IconExternalLink size={11} />
-          </Anchor>{" "}
-          → выберите своё приложение → <b>Generate Access Token</b> с правами:{" "}
-          <Code>instagram_basic</Code>, <Code>instagram_content_publish</Code>,{" "}
-          <Code>pages_show_list</Code>, <Code>pages_read_engagement</Code>.
-          Полученная строка <Code>EAAG…</Code> — это поле <Code>Access Token</Code>.
-        </Step>
-        <Step n={5} title="Узнайте ig_user_id">
-          В том же Explorer выполните запрос:
-          <Code block mt={4}>
-            me/accounts?fields=instagram_business_account
-          </Code>
-          В ответе у вашей страницы будет{" "}
-          <Code>instagram_business_account.id</Code> — это число и есть{" "}
-          <Code>Instagram User ID</Code>.
-        </Step>
+        {steps.map((n) => (
+          <Step key={n} n={n} title={t(`accounts.guideStep${n}Title`)}>
+            {t(`accounts.guideStep${n}Desc`)}
+          </Step>
+        ))}
       </Stack>
       <Divider my="sm" />
       <Alert variant="light" color="yellow" p="xs">
-        <Text fz="xs">
-          Звучит сложно — потому что Meta так устроила. Поэтому следующим шагом мы
-          сделаем кнопку <b>«Войти через Instagram»</b>, которая получит токен и id
-          автоматически, и все эти шаги исчезнут.
-        </Text>
+        <Text fz="xs">{t("accounts.guideNote")}</Text>
       </Alert>
     </Box>
   );

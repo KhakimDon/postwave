@@ -11,17 +11,15 @@ import "@mantine/notifications/styles.css";
 import "flag-icons/css/flag-icons.min.css";
 import "./index.css";
 
-import dayjs from "dayjs";
-import "dayjs/locale/ru";
-import "./i18n";
+import "./i18n"; // инициализирует i18next и выставляет локаль dayjs по выбранному языку
 import { theme } from "./theme";
 import { App } from "./App";
-
-dayjs.locale("ru");
+import { AuroraBackground } from "./components/AuroraBackground";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="light">
+      <AuroraBackground />
       <Notifications position="top-right" />
       <BrowserRouter>
         <App />

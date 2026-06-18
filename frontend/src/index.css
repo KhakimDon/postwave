@@ -1,6 +1,79 @@
 :root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Свечения — одинаковы в обеих темах */
+  --glow-violet: rgba(125, 82, 249, 0.5);
+  --glow-cyan: rgba(56, 200, 240, 0.45);
+  --glow-teal: rgba(20, 210, 180, 0.4);
+  --glass-blur: 26px;
+}
+
+/* ===================== Тёмная тема (по умолчанию) ===================== */
+[data-mantine-color-scheme="dark"] {
+  --surface-deep: #06070f;
+
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-strong: rgba(255, 255, 255, 0.085);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-strong: rgba(255, 255, 255, 0.22);
+  --glass-shadow:
+    0 12px 40px -14px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow-hover:
+    0 22px 60px -16px rgba(0, 0, 0, 0.75),
+    0 0 36px -8px var(--glow-violet),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  --glass-modal-bg: rgba(16, 18, 32, 0.82);
+
+  /* Семантические поверхности (ячейки, карточки канбана, чипы, строки) */
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --border-1: rgba(255, 255, 255, 0.1);
+  --accent-soft: rgba(125, 82, 249, 0.18);
+  --accent-border: rgba(140, 120, 255, 0.6);
+
+  --app-bg-overlay: rgba(8, 10, 22, 0.55);
+  --aurora-vignette: rgba(0, 0, 0, 0.45);
+  --aurora-blob-opacity: 0.55;
+
+  /* Сырые светлые gray-0..4 в тёмной теме Mantine не перекрашивает —
+     ремапим в полупрозрачные стеклянные, чтобы фоны/границы не светились. */
+  --mantine-color-gray-0: rgba(255, 255, 255, 0.035);
+  --mantine-color-gray-1: rgba(255, 255, 255, 0.055);
+  --mantine-color-gray-2: rgba(255, 255, 255, 0.08);
+  --mantine-color-gray-3: rgba(255, 255, 255, 0.12);
+  --mantine-color-gray-4: rgba(255, 255, 255, 0.16);
+}
+
+/* ===================== Светлая тема (день) ===================== */
+[data-mantine-color-scheme="light"] {
+  --surface-deep: #eef1fb;
+
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-border-strong: rgba(125, 82, 249, 0.22);
+  --glass-shadow:
+    0 14px 40px -18px rgba(60, 50, 120, 0.3),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow-hover:
+    0 22px 55px -18px rgba(80, 60, 160, 0.35),
+    0 0 30px -10px rgba(125, 82, 249, 0.32),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  --glass-modal-bg: rgba(255, 255, 255, 0.88);
+
+  --surface-1: rgba(255, 255, 255, 0.55);
+  --surface-2: rgba(255, 255, 255, 0.75);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --border-1: rgba(30, 27, 75, 0.08);
+  --accent-soft: rgba(125, 82, 249, 0.12);
+  --accent-border: rgba(125, 82, 249, 0.5);
+
+  --app-bg-overlay: rgba(255, 255, 255, 0.62);
+  --aurora-vignette: rgba(255, 255, 255, 0);
+  --aurora-blob-opacity: 0.32;
 }
 
 * {
@@ -16,19 +89,227 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 100% -10%, rgba(125, 82, 249, 0.08), transparent),
-    var(--mantine-color-body);
+  background-color: var(--surface-deep);
+  color: var(--mantine-color-text);
+  overflow-x: hidden;
 }
 
-/* Единый цвет плейсхолдера во всех полях входа (текст, пароль, телефон) */
+/* ===================== Aurora / mesh фон ===================== */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 12% 8%, rgba(99, 60, 220, 0.22), transparent 60%),
+    radial-gradient(50% 45% at 88% 12%, rgba(34, 140, 238, 0.18), transparent 60%),
+    radial-gradient(55% 55% at 82% 88%, rgba(20, 200, 180, 0.14), transparent 60%),
+    radial-gradient(55% 55% at 8% 92%, rgba(180, 80, 240, 0.16), transparent 60%),
+    var(--surface-deep);
+}
+.aurora__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: var(--aurora-blob-opacity);
+  will-change: transform;
+}
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 50% 0%, transparent 55%, var(--aurora-vignette) 100%);
+}
+
+/* ===================== Анимации ===================== */
+@keyframes pwFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(36px, -44px) scale(1.1); }
+}
+@keyframes pwFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pwFadeBlur {
+  from { opacity: 0; filter: blur(14px); transform: translateY(12px); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+.pw-rise { animation: pwFadeBlur 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Плавное появление сообщения в чате (отправка/приём/смена чата) */
+@keyframes pwMsgIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pw-msg { animation: pwMsgIn 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Плавная смена слайда в лайтбоксе */
+.pw-fade { animation: pwFade 220ms ease both; }
+
+/* Пункт быстрого ответа (скрипт) в попапе чата */
+.pw-script-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 140ms ease;
+}
+.pw-script-item:hover {
+  background: var(--surface-1);
+}
+
+/* Кнопка эмодзи в панели */
+.pw-emoji {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 8px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.pw-emoji:hover {
+  background: var(--surface-hover);
+  transform: scale(1.18);
+}
+
+/* Появление боковой панели ввода (эмодзи/стикеры) */
+.pw-emoji-panel {
+  animation: pwPanelIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes pwPanelIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Чип публикации в календаре / карточка канбана */
+.pw-chip:hover {
+  transform: translateY(-1px);
+  background: var(--surface-hover) !important;
+}
+
+/* Строка диалога в списке чатов */
+.pw-dialog-row {
+  position: relative;
+  transition: background 140ms ease;
+}
+.pw-dialog-row:hover {
+  background: var(--surface-1);
+}
+.pw-dialog-row[data-active] {
+  background: var(--accent-soft);
+}
+.pw-dialog-row[data-active]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #8a57fb, #4aa3ff);
+  box-shadow: 0 0 12px -2px var(--glow-violet);
+}
+
+/* ===================== Стеклянные примитивы ===================== */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+.glass-hover {
+  transition:
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 280ms ease,
+    border-color 280ms ease,
+    background 280ms ease;
+}
+.glass-hover:hover {
+  transform: translateY(-3px);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--glass-shadow-hover);
+}
+.glass-modal {
+  background: var(--glass-modal-bg) !important;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: 0 30px 90px -24px rgba(0, 0, 0, 0.55);
+}
+/* Шапка модалки/дровера — прозрачная (без второго слоя блюра/тинта) */
+.glass-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-1);
+}
+
+/* ===================== Mantine: остекление поверхностей ===================== */
+.mantine-AppShell-root {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+}
+.mantine-AppShell-main {
+  background: transparent !important;
+}
+.mantine-AppShell-header {
+  background: var(--app-bg-overlay) !important;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+.mantine-AppShell-navbar {
+  background: var(--app-bg-overlay) !important;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border-right: 1px solid var(--glass-border) !important;
+}
+
+/* Поля ввода — матовое стекло (обе темы) */
+.mantine-Input-input,
+textarea.mantine-Textarea-input {
+  background: var(--surface-2);
+  border-color: var(--border-1);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+.mantine-Input-input:focus,
+.mantine-Input-input:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--surface-hover);
+}
+
+/* Выпадающие меню/комбобоксы/поповеры — стекло (тёмная тема) */
+[data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
+[data-mantine-color-scheme="dark"] .mantine-Menu-dropdown,
+[data-mantine-color-scheme="dark"] .mantine-Combobox-dropdown,
+[data-mantine-color-scheme="dark"] .mantine-Select-dropdown {
+  background: rgba(16, 18, 32, 0.9) !important;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--glass-border-strong) !important;
+  box-shadow: 0 20px 60px -18px rgba(0, 0, 0, 0.8);
+}
+[data-mantine-color-scheme="dark"] .mantine-Notification-root {
+  background: rgba(16, 18, 32, 0.9) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+}
+
+/* ===================== Логин: поля на стекле ===================== */
 .login-input::placeholder,
 .pw-phone .PhoneInputInput::placeholder {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.55);
   opacity: 1;
 }
-
-/* Телефонный инпут — точь-в-точь как Mantine-инпут (как у пароля) */
+/* Телефонный инпут — пиксель-в-пиксель как Mantine-инпут пароля/имени */
 .pw-phone {
   display: flex;
   align-items: center;
@@ -38,17 +319,16 @@ body {
   border-radius: var(--mantine-radius-default);
   padding: 0 12px;
   height: 36px;
-  transition: border-color 100ms ease;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .pw-phone:hover,
 .pw-phone:focus-within {
-  border-color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(140, 120, 255, 0.8);
+  box-shadow: 0 0 0 3px rgba(125, 82, 249, 0.2);
 }
-
-/* Mantine-инпуты на стекле: рамка при hover/focus — белая, а не синяя */
 .login-input:hover,
 .login-input:focus {
-  border-color: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgba(140, 120, 255, 0.8) !important;
 }
 .pw-phone .PhoneInputInput {
   background: transparent;
@@ -69,18 +349,22 @@ body {
   opacity: 1;
 }
 
-/* Кастомный мягкий скролл */
+/* ===================== Кастомный скролл ===================== */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--mantine-color-gray-4);
+  background: var(--border-1);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--mantine-color-gray-5);
+  background: var(--glass-border-strong);
   background-clip: content-box;
+}
+::selection {
+  background: rgba(125, 82, 249, 0.4);
+  color: #fff;
 }

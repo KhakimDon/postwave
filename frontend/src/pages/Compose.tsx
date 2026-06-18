@@ -7,7 +7,6 @@ import {
   Button,
   Box,
   Text,
-  Paper,
   Card,
   SimpleGrid,
   UnstyledButton,
@@ -21,7 +20,6 @@ import {
   Divider,
   Select,
   Alert,
-  ScrollArea,
   ActionIcon,
   Badge,
 } from "@mantine/core";
@@ -41,8 +39,9 @@ import {
   IconDeviceFloppy,
   IconX,
 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
-import type { Account, IgPostType, PlatformOptions } from "../api/types";
+import type { Account, IgPostType, PlatformOptions, Post } from "../api/types";
 import { MediaUploader, type MediaItem } from "../components/MediaUploader";
 import { PlatformPreview } from "../components/PlatformPreview";
 
@@ -51,50 +50,111 @@ const TELEGRAM_LOGO =
 const INSTAGRAM_LOGO =
   "https://upload.wikimedia.org/wikipedia/commons/9/95/Instagram_logo_2022.svg";
 
-const IG_TYPES: { value: IgPostType; label: string }[] = [
-  { value: "feed", label: "Лента" },
-  { value: "carousel", label: "Карусель" },
-  { value: "reels", label: "Reels" },
-  { value: "stories", label: "Stories" },
-];
+const HINT_KEY: Record<IgPostType, string> = {
+  feed: "compose.hintFeed",
+  carousel: "compose.hintCarousel",
+  reels: "compose.hintReels",
+  stories: "compose.hintStories",
+};
 
-export function Compose() {
+export function Compose({
+  initialDate,
+  onClose,
+  embedded,
+  initialPost,
+  intent = "create",
+}: {
+  initialDate?: string | null;
+  onClose?: () => void;
+  embedded?: boolean;
+  initialPost?: Post;
+  intent?: "create" | "edit" | "republish";
+} = {}) {
   const nav = useNavigate();
-  const isMobile = useMediaQuery("(max-width: 768px)");
+  const { t } = useTranslation();
+  const mobile = useMediaQuery("(max-width: 768px)");
+  // десктоп: редактор сбоку + превью по центру; телефон: стопкой
+  const isMobile = mobile;
+  const IG_TYPES: { value: IgPostType; label: string }[] = [
+    { value: "feed", label: t("compose.igFeed") },
+    { value: "carousel", label: t("compose.igCarousel") },
+    { value: "reels", label: t("compose.igReels") },
+    { value: "stories", label: t("compose.igStories") },
+  ];
   const [searchParams] = useSearchParams();
-  const dateParam = searchParams.get("date"); // из календаря: /compose?date=YYYY-MM-DD
+  // дата приходит пропсом (панель) или из query (страница /compose?date=YYYY-MM-DD)
+  const dateParam = initialDate ?? searchParams.get("date");
+
+  // успешно создали/отменили: закрываем панель ИЛИ уходим на /posts
+  function done() {
+    if (onClose) onClose();
+    else nav("/posts");
+  }
+
+  // Данные для предзаполнения (редактирование / «изменить и опубликовать»).
+  // platform_options не описаны в типе Post, но приходят с бэкенда — читаем кастом.
+  const ipOpts = (initialPost as { platform_options?: PlatformOptions } | undefined)
+    ?.platform_options;
+  const ipTg = ipOpts?.telegram;
+  const ipIg = ipOpts?.instagram;
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [caption, setCaption] = useState("");
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  // По умолчанию «Сейчас». Если пришли из календаря (?date=) — сразу «По расписанию».
+  const [selectedIds, setSelectedIds] = useState<number[]>(
+    initialPost ? Array.from(new Set(initialPost.targets.map((t) => t.account_id))) : []
+  );
+  const [caption, setCaption] = useState(initialPost?.content ?? "");
+  const [media, setMedia] = useState<MediaItem[]>(
+    initialPost
+      ? initialPost.media_urls.map((u) => ({
+          id: u,
+          previewUrl: u,
+          url: u,
+          uploading: false,
+          isVideo: /\.(mp4|mov|webm|m4v)$/i.test(u),
+        }))
+      : []
+  );
+  // По умолчанию «Сейчас». Из календаря (?date=) или у запланированного — «По расписанию».
+  // Для «изменить и опубликовать» — сразу «Сейчас».
   const [mode, setMode] = useState<"now" | "schedule">(
-    dateParam ? "schedule" : "now"
+    intent === "republish"
+      ? "now"
+      : initialPost?.scheduled_at || dateParam
+      ? "schedule"
+      : "now"
   );
   const [scheduledAt, setScheduledAt] = useState<Date | null>(
-    dateParam ? new Date(`${dateParam}T12:00`) : null
+    initialPost?.scheduled_at
+      ? new Date(initialPost.scheduled_at)
+      : dateParam
+      ? new Date(`${dateParam}T12:00`)
+      : null
   );
   const [loading, setLoading] = useState(false);
 
   // Telegram options
-  const [tgSilent, setTgSilent] = useState(false);
-  const [tgNoPreview, setTgNoPreview] = useState(false);
-  const [tgParseMode, setTgParseMode] = useState<string | null>("none");
+  const [tgSilent, setTgSilent] = useState(ipTg?.silent ?? false);
+  const [tgNoPreview, setTgNoPreview] = useState(ipTg?.no_preview ?? false);
+  const [tgParseMode, setTgParseMode] = useState<string | null>(ipTg?.parse_mode ?? "none");
 
   // Instagram options
-  const [igType, setIgType] = useState<IgPostType>("feed");
-  const [igLocation, setIgLocation] = useState("");
-  const [igTags, setIgTags] = useState<string[]>([]);
-  const [igCollabs, setIgCollabs] = useState<string[]>([]);
-  const [igHideLikes, setIgHideLikes] = useState(false);
-  const [igDisableComments, setIgDisableComments] = useState(false);
-  const [igAltText, setIgAltText] = useState("");
-  const [igShareToFeed, setIgShareToFeed] = useState(true);
+  const [igType, setIgType] = useState<IgPostType>(ipIg?.post_type ?? "feed");
+  const [igLocation, setIgLocation] = useState(ipIg?.location ?? "");
+  const [igTags, setIgTags] = useState<string[]>(ipIg?.user_tags ?? []);
+  const [igCollabs, setIgCollabs] = useState<string[]>(ipIg?.collaborators ?? []);
+  const [igHideLikes, setIgHideLikes] = useState(ipIg?.hide_likes ?? false);
+  const [igDisableComments, setIgDisableComments] = useState(ipIg?.disable_comments ?? false);
+  const [igAltText, setIgAltText] = useState(ipIg?.alt_text ?? "");
+  const [igShareToFeed, setIgShareToFeed] = useState(ipIg?.share_to_feed ?? true);
   const [igAdvanced, advanced] = useDisclosure(false);
 
   useEffect(() => {
-    api.listAccounts().then(setAccounts).catch(() => {});
+    // публикуем только в каналы/Instagram; личный TG-аккаунт инбокса (telegram_user)
+    // — не цель публикации
+    api
+      .listAccounts()
+      .then((a) => setAccounts(a.filter((x) => x.platform !== "telegram_user")))
+      .catch(() => {});
   }, []);
 
   const selectedAccounts = useMemo(
@@ -143,7 +203,7 @@ export function Compose() {
   // через календарь (перетащить из «Без даты» в нужный день).
   async function saveDraft() {
     if (selectedIds.length === 0) {
-      notifications.show({ color: "red", message: "Выберите хотя бы один аккаунт" });
+      notifications.show({ color: "red", message: t("compose.errSelectAccount") });
       return;
     }
     setLoading(true);
@@ -157,9 +217,9 @@ export function Compose() {
       });
       notifications.show({
         color: "blue",
-        message: "Сохранено в черновики — запланируйте через календарь 📅",
+        message: t("compose.draftSaved"),
       });
-      nav("/publications");
+      done();
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
     } finally {
@@ -169,11 +229,11 @@ export function Compose() {
 
   async function submit() {
     if (selectedIds.length === 0) {
-      notifications.show({ color: "red", message: "Выберите хотя бы один аккаунт" });
+      notifications.show({ color: "red", message: t("compose.errSelectAccount") });
       return;
     }
     if (mode === "schedule" && !scheduledAt) {
-      notifications.show({ color: "red", message: "Укажите дату и время" });
+      notifications.show({ color: "red", message: t("compose.errDateTime") });
       return;
     }
     setLoading(true);
@@ -188,11 +248,19 @@ export function Compose() {
       });
       if (mode === "now") {
         await api.publishNow(post.id);
-        notifications.show({ color: "teal", message: "Опубликовано 🚀" });
+        notifications.show({ color: "teal", message: t("compose.publishedToast") });
       } else {
-        notifications.show({ color: "teal", message: "Запланировано ⏱" });
+        notifications.show({ color: "teal", message: t("compose.scheduledToast") });
       }
-      nav("/publications");
+      // редактирование запланированного — заменяем старый пост новым
+      if (intent === "edit" && initialPost) {
+        try {
+          await api.deletePost(initialPost.id);
+        } catch {
+          /* старый пост уже мог уйти/удалиться — не критично */
+        }
+      }
+      done();
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
     } finally {
@@ -204,9 +272,16 @@ export function Compose() {
     return (
       <Card>
         <Alert variant="light" color="brand" icon={<IconInfoCircle size={18} />}>
-          Сначала подключите аккаунт.
-          <Button ml="md" size="xs" onClick={() => nav("/accounts")}>
-            К аккаунтам
+          {t("compose.needAccountFirst")}
+          <Button
+            ml="md"
+            size="xs"
+            onClick={() => {
+              onClose?.();
+              nav("/accounts");
+            }}
+          >
+            {t("compose.toAccounts")}
           </Button>
         </Alert>
       </Card>
@@ -219,42 +294,51 @@ export function Compose() {
         isMobile
           ? undefined
           : {
-              height: "calc(100vh - 92px)",
+              height: "100%",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
             }
       }
     >
-      <Group mb="md" gap="sm" style={{ flexShrink: 0 }}>
-        <ActionIcon variant="subtle" size="lg" onClick={() => nav("/publications")}>
-          <IconArrowLeft size={20} />
-        </ActionIcon>
-        <Text fz={{ base: 22, sm: 26 }} fw={800}>
-          Новая публикация
-        </Text>
-      </Group>
+      {!embedded && (
+        <Group mb="md" gap="sm" style={{ flexShrink: 0 }}>
+          <ActionIcon variant="subtle" size="lg" onClick={() => done()}>
+            <IconArrowLeft size={20} />
+          </ActionIcon>
+          <Text fz={{ base: 22, sm: 26 }} fw={800}>
+            {t("compose.newTitle")}
+          </Text>
+        </Group>
+      )}
 
       <Box
         style={
           isMobile
-            ? { display: "flex", flexDirection: "column", gap: 16 }
-            : { display: "flex", gap: 24, flex: 1, minHeight: 0 }
+            ? { display: "flex", flexDirection: "column", gap: 16, padding: 16 }
+            : { display: "flex", flex: 1, minHeight: 0 }
         }
       >
-        {/* ---------- Редактор (скроллится) ---------- */}
+        {/* ---------- Редактор (сбоку, скроллится) ---------- */}
         <Box
           style={
             isMobile
               ? undefined
-              : { flex: "1 1 58%", overflowY: "auto", minHeight: 0, paddingRight: 8 }
+              : {
+                  width: 460,
+                  flexShrink: 0,
+                  overflowY: "auto",
+                  minHeight: 0,
+                  padding: 22,
+                  borderRight: "1px solid var(--glass-border)",
+                }
           }
         >
           <Stack gap="lg">
             {/* Аккаунты */}
             <Box>
               <Text fz="sm" fw={600} mb={8}>
-                Куда публикуем
+                {t("compose.whereToPublish")}
               </Text>
               <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
                 {accounts.map((a) => (
@@ -269,8 +353,8 @@ export function Compose() {
             </Box>
 
             <Textarea
-              label="Текст / подпись"
-              placeholder="Напишите текст поста…"
+              label={t("compose.captionLabel")}
+              placeholder={t("compose.captionPh")}
               autosize
               minRows={5}
               maxRows={14}
@@ -280,7 +364,7 @@ export function Compose() {
 
             <Box>
               <Text fz="sm" fw={600} mb={6}>
-                Медиа
+                {t("compose.mediaLabel")}
               </Text>
               <MediaUploader media={media} onChange={setMedia} />
             </Box>
@@ -290,25 +374,25 @@ export function Compose() {
               <OptionCard
                 icon={<IconBrandTelegram size={18} />}
                 color="blue"
-                title="Настройки Telegram"
+                title={t("compose.tgSettings")}
               >
                 <Stack gap="sm">
                   <Switch
-                    label="Без звука (тихая публикация)"
+                    label={t("compose.tgSilent")}
                     checked={tgSilent}
                     onChange={(e) => setTgSilent(e.currentTarget.checked)}
                   />
                   <Switch
-                    label="Скрыть превью ссылок"
+                    label={t("compose.tgNoPreview")}
                     checked={tgNoPreview}
                     onChange={(e) => setTgNoPreview(e.currentTarget.checked)}
                   />
                   <Select
-                    label="Форматирование текста"
+                    label={t("compose.tgFormat")}
                     data={[
-                      { value: "none", label: "Обычный текст" },
-                      { value: "MarkdownV2", label: "Markdown" },
-                      { value: "HTML", label: "HTML" },
+                      { value: "none", label: t("compose.tgFormatNone") },
+                      { value: "MarkdownV2", label: t("compose.tgFormatMd") },
+                      { value: "HTML", label: t("compose.tgFormatHtml") },
                     ]}
                     value={tgParseMode}
                     onChange={setTgParseMode}
@@ -323,12 +407,12 @@ export function Compose() {
               <OptionCard
                 icon={<IconBrandInstagram size={18} />}
                 color="grape"
-                title="Настройки Instagram"
+                title={t("compose.igSettings")}
               >
                 <Stack gap="md">
                   <Box>
                     <Text fz="sm" fw={500} mb={6}>
-                      Тип публикации
+                      {t("compose.igPostType")}
                     </Text>
                     <SegmentedControl
                       fullWidth
@@ -337,29 +421,29 @@ export function Compose() {
                       data={IG_TYPES}
                     />
                     <Text fz="xs" c="dimmed" mt={6}>
-                      {igTypeHint(igType)}
+                      {t(HINT_KEY[igType])}
                     </Text>
                   </Box>
 
                   {igType !== "stories" && (
                     <>
                       <TextInput
-                        label="Локация"
-                        placeholder="Например: Tashkent, Uzbekistan"
+                        label={t("compose.locationLabel")}
+                        placeholder={t("compose.locationPh")}
                         value={igLocation}
                         onChange={(e) => setIgLocation(e.currentTarget.value)}
                       />
                       <TagsInput
-                        label="Отметить людей"
-                        placeholder="@username и Enter"
+                        label={t("compose.tagPeopleLabel")}
+                        placeholder={t("compose.tagPeoplePh")}
                         value={igTags}
                         onChange={setIgTags}
                         clearable
                       />
                       <TagsInput
-                        label="Соавторы (до 3)"
-                        description="Пост появится в профилях соавторов"
-                        placeholder="@username и Enter"
+                        label={t("compose.collabLabel")}
+                        description={t("compose.collabDesc")}
+                        placeholder={t("compose.tagPeoplePh")}
                         value={igCollabs}
                         onChange={(v) => setIgCollabs(v.slice(0, 3))}
                         maxTags={3}
@@ -370,7 +454,7 @@ export function Compose() {
 
                   {igType === "reels" && (
                     <Switch
-                      label="Показать Reels в ленте"
+                      label={t("compose.showInFeed")}
                       checked={igShareToFeed}
                       onChange={(e) => setIgShareToFeed(e.currentTarget.checked)}
                     />
@@ -381,7 +465,7 @@ export function Compose() {
                       <Group gap={6} c="grape.7">
                         <IconSettings size={15} />
                         <Text fz="sm" fw={600}>
-                          Расширенные настройки
+                          {t("compose.advanced")}
                         </Text>
                         <IconChevronDown
                           size={14}
@@ -395,12 +479,12 @@ export function Compose() {
                     <Collapse in={igAdvanced}>
                       <Stack gap="sm" mt="sm">
                         <Switch
-                          label="Скрыть количество лайков"
+                          label={t("compose.hideLikes")}
                           checked={igHideLikes}
                           onChange={(e) => setIgHideLikes(e.currentTarget.checked)}
                         />
                         <Switch
-                          label="Выключить комментарии"
+                          label={t("compose.disableComments")}
                           checked={igDisableComments}
                           onChange={(e) =>
                             setIgDisableComments(e.currentTarget.checked)
@@ -408,8 +492,8 @@ export function Compose() {
                         />
                         {igType !== "stories" && (
                           <Textarea
-                            label="Альтернативный текст (доступность)"
-                            placeholder="Опишите изображение для незрячих"
+                            label={t("compose.altLabel")}
+                            placeholder={t("compose.altPh")}
                             autosize
                             minRows={2}
                             value={igAltText}
@@ -430,14 +514,14 @@ export function Compose() {
               value={mode}
               onChange={(v) => setMode(v as "now" | "schedule")}
               data={[
-                { value: "schedule", label: "📅 По расписанию" },
-                { value: "now", label: "⚡ Сейчас" },
+                { value: "schedule", label: t("compose.modeSchedule") },
+                { value: "now", label: t("compose.modeNow") },
               ]}
             />
             {mode === "schedule" && (
               <DateTimePicker
-                label="Дата и время публикации"
-                placeholder="Выберите момент"
+                label={t("compose.dateLabel")}
+                placeholder={t("compose.datePh")}
                 value={scheduledAt}
                 onChange={(v) => setScheduledAt(v as Date | null)}
                 valueFormat="DD MMM YYYY, HH:mm"
@@ -450,14 +534,14 @@ export function Compose() {
               <Button
                 variant="default"
                 leftSection={<IconX size={16} />}
-                onClick={() => nav("/publications")}
+                onClick={() => done()}
               >
-                Отмена
+                {t("common.cancel")}
               </Button>
               <Group gap="sm">
                 {/* «Сохранить» (черновик) доступно только в режиме «Сейчас».
                     В режиме «По расписанию» — только запланировать или отменить. */}
-                {mode === "now" && (
+                {intent === "create" && mode === "now" && (
                   <Button
                     variant="light"
                     loading={loading}
@@ -465,7 +549,7 @@ export function Compose() {
                     leftSection={<IconDeviceFloppy size={16} />}
                     onClick={saveDraft}
                   >
-                    Сохранить
+                    {t("compose.saveDraft")}
                   </Button>
                 )}
                 <Button
@@ -477,34 +561,35 @@ export function Compose() {
                   onClick={submit}
                 >
                   {isUploading
-                    ? "Загрузка медиа…"
+                    ? t("compose.uploadingMedia")
                     : mode === "now"
-                    ? "Опубликовать сейчас"
-                    : "Запланировать"}
+                    ? t("compose.publishNowBtn")
+                    : t("compose.scheduleBtn")}
                 </Button>
               </Group>
             </Group>
           </Stack>
         </Box>
 
-        {/* ---------- Превью (закреплено справа, на всю высоту, со скроллом) ---------- */}
+        {/* ---------- Превью (по центру, закреплено) ---------- */}
         <Box
           style={
-            isMobile ? undefined : { flex: "1 1 42%", minHeight: 0 }
+            isMobile
+              ? undefined
+              : {
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  padding: 24,
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                }
           }
         >
-          <Paper
-            p="md"
-            radius="lg"
-            withBorder
-            style={{
-              height: isMobile ? "auto" : "100%",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <Text fz="sm" fw={600} c="dimmed" mb="sm" tt="uppercase">
-              Предпросмотр
+          <Box style={{ width: "100%" }}>
+            <Text fz="sm" fw={600} c="dimmed" mb="md" tt="uppercase" ta="center">
+              {t("compose.previewTitle")}
             </Text>
             {selectedAccounts.length === 0 ? (
               <Alert
@@ -512,54 +597,46 @@ export function Compose() {
                 color="brand"
                 icon={<IconInfoCircle size={18} />}
               >
-                Выберите аккаунт — здесь появится точное превью для каждой
-                площадки.
+                {t("compose.previewHint")}
               </Alert>
             ) : (
-              <ScrollArea
-                style={{ flex: 1 }}
-                type="auto"
-                offsetScrollbars
-                scrollbarSize={8}
-              >
-                <Stack gap="xl" pr="sm" pb="md">
-                  {selectedAccounts.map((a) => (
-                    <Box key={a.id}>
-                      <Group gap={6} mb={8}>
-                        <ThemeIcon
-                          size="sm"
-                          variant="light"
-                          color={a.platform === "instagram" ? "grape" : "blue"}
-                        >
-                          {a.platform === "instagram" ? (
-                            <IconBrandInstagram size={13} />
-                          ) : (
-                            <IconBrandTelegram size={13} />
-                          )}
-                        </ThemeIcon>
-                        <Text fz="xs" fw={600} c="dimmed">
-                          {a.display_name}
-                        </Text>
-                        {a.platform === "instagram" && (
-                          <Badge size="xs" variant="light" color="grape">
-                            {IG_TYPES.find((t) => t.value === igType)?.label}
-                          </Badge>
+              <Group align="flex-start" justify="center" gap="xl" wrap="wrap" pb="md">
+                {selectedAccounts.map((a) => (
+                  <Box key={a.id} style={{ width: 340, maxWidth: "100%" }}>
+                    <Group gap={6} mb={8}>
+                      <ThemeIcon
+                        size="sm"
+                        variant="light"
+                        color={a.platform === "instagram" ? "grape" : "blue"}
+                      >
+                        {a.platform === "instagram" ? (
+                          <IconBrandInstagram size={13} />
+                        ) : (
+                          <IconBrandTelegram size={13} />
                         )}
-                      </Group>
-                      <PlatformPreview
-                        platform={a.platform}
-                        content={caption}
-                        media={previewMedia}
-                        accountName={a.display_name}
-                        igPostType={igType}
-                        location={igLocation}
-                      />
-                    </Box>
-                  ))}
-                </Stack>
-              </ScrollArea>
+                      </ThemeIcon>
+                      <Text fz="xs" fw={600} c="dimmed">
+                        {a.display_name}
+                      </Text>
+                      {a.platform === "instagram" && (
+                        <Badge size="xs" variant="light" color="grape">
+                          {IG_TYPES.find((x) => x.value === igType)?.label}
+                        </Badge>
+                      )}
+                    </Group>
+                    <PlatformPreview
+                      platform={a.platform}
+                      content={caption}
+                      media={previewMedia}
+                      accountName={a.display_name}
+                      igPostType={igType}
+                      location={igLocation}
+                    />
+                  </Box>
+                ))}
+              </Group>
             )}
-          </Paper>
+          </Box>
         </Box>
       </Box>
     </Box>
@@ -636,15 +713,3 @@ function OptionCard({
   );
 }
 
-function igTypeHint(t: IgPostType): string {
-  switch (t) {
-    case "carousel":
-      return "2–10 фото/видео в одном посте, листается.";
-    case "reels":
-      return "Вертикальное видео до 90 сек. Больше охвата.";
-    case "stories":
-      return "Исчезает через 24 часа, без подписи.";
-    default:
-      return "Одиночное фото в ленту с подписью.";
-  }
-}

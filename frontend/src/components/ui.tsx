@@ -1,19 +1,20 @@
 import { Badge, Box, Group, Stack, Text, ThemeIcon } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { PostStatus } from "../api/types";
 
-const STATUS_MAP: Record<PostStatus, { label: string; color: string }> = {
-  draft: { label: "Черновик", color: "gray" },
-  scheduled: { label: "Запланирован", color: "blue" },
-  publishing: { label: "Публикуется", color: "yellow" },
-  published: { label: "Опубликован", color: "teal" },
-  failed: { label: "Ошибка", color: "red" },
+const STATUS_COLOR: Record<PostStatus, string> = {
+  draft: "gray",
+  scheduled: "blue",
+  publishing: "yellow",
+  published: "teal",
+  failed: "red",
 };
 
 export function StatusBadge({ status }: { status: PostStatus }) {
-  const s = STATUS_MAP[status];
+  const { t } = useTranslation();
   return (
-    <Badge color={s.color} variant="light" radius="sm">
-      {s.label}
+    <Badge color={STATUS_COLOR[status]} variant="light" radius="sm">
+      {t(`status.${status}`)}
     </Badge>
   );
 }

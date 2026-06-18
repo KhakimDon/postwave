@@ -18,14 +18,18 @@ import {
   IconArrowRight,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Post } from "../api/types";
 import { PageHeader } from "../components/ui";
+import { useComposer } from "../composer";
 
 export function Dashboard() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const nav = useNavigate();
+  const { open } = useComposer();
+  const { t } = useTranslation();
 
   useEffect(() => {
     Promise.all([api.listPosts(), api.listAccounts()]).then(([p, a]) => {
@@ -39,25 +43,25 @@ export function Dashboard() {
 
   const stats = [
     {
-      label: "Запланировано",
+      label: t("dashboard.statScheduled"),
       value: scheduled,
       icon: IconClockHour4,
       color: "blue",
     },
     {
-      label: "Опубликовано",
+      label: t("dashboard.statPublished"),
       value: published,
       icon: IconCircleCheck,
       color: "teal",
     },
     {
-      label: "Аккаунтов",
+      label: t("dashboard.statAccounts"),
       value: accounts.length,
       icon: IconPlugConnected,
       color: "grape",
     },
     {
-      label: "Всего постов",
+      label: t("dashboard.statPosts"),
       value: posts.length,
       icon: IconCalendarTime,
       color: "brand",
@@ -67,8 +71,8 @@ export function Dashboard() {
   return (
     <Box>
       <PageHeader
-        title="Обзор"
-        subtitle="Ваш центр управления соц-продажами"
+        title={t("dashboard.title")}
+        subtitle={t("dashboard.subtitle")}
       />
 
       <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md" mb="xl">
@@ -95,17 +99,18 @@ export function Dashboard() {
         p="xl"
         style={{
           background:
-            "linear-gradient(135deg, var(--mantine-color-brand-6), var(--mantine-color-grape-5))",
-          border: "none",
+            "linear-gradient(135deg, #6f3df0 0%, #7d52f9 35%, #4aa3ff 100%)",
+          border: "1px solid rgba(255,255,255,0.16)",
+          boxShadow:
+            "0 24px 70px -22px rgba(74,120,255,0.6), inset 0 1px 0 0 rgba(255,255,255,0.18)",
         }}
       >
         <Stack gap="xs" maw={520}>
           <Text c="white" fw={800} fz={rem(24)}>
-            Готовы запустить продажи?
+            {t("dashboard.ctaTitle")}
           </Text>
           <Text c="white" opacity={0.9} fz="sm">
-            Подключите Telegram-канал и Instagram, подготовьте посты на неделю
-            вперёд — Postwave опубликует их точно в срок.
+            {t("dashboard.ctaText")}
           </Text>
           <Group mt="md">
             <Button
@@ -113,9 +118,9 @@ export function Dashboard() {
               variant="white"
               c="brand.7"
               rightSection={<IconArrowRight size={16} />}
-              onClick={() => nav("/publications")}
+              onClick={() => open()}
             >
-              Создать публикацию
+              {t("dashboard.ctaCreate")}
             </Button>
             <Button
               variant="white"
@@ -123,7 +128,7 @@ export function Dashboard() {
               style={{ background: "rgba(255,255,255,0.15)", color: "white" }}
               onClick={() => nav("/accounts")}
             >
-              Подключить аккаунт
+              {t("dashboard.ctaConnect")}
             </Button>
           </Group>
         </Stack>

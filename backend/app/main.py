@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,12 +10,19 @@ from .routers import (
     accounts,
     auth,
     instagram_oauth,
+    kanban,
     posts,
     telegram_userauth,
     uploads,
 )
 from .routers.uploads import UPLOAD_DIR
 from .scheduler import start_scheduler, stop_scheduler
+from .services import telegram_user
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s — %(message)s",
+)
 
 
 @asynccontextmanager
@@ -23,6 +31,7 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     yield
     stop_scheduler()
+    await telegram_user.disconnect_all()
 
 
 app = FastAPI(title="SMM Platform API", version="0.1.0", lifespan=lifespan)
@@ -41,6 +50,7 @@ app.include_router(posts.router)
 app.include_router(uploads.router)
 app.include_router(instagram_oauth.router)
 app.include_router(telegram_userauth.router)
+app.include_router(kanban.router)
 
 # Раздача загруженных медиафайлов
 app.mount("/media", StaticFiles(directory=str(UPLOAD_DIR)), name="media")

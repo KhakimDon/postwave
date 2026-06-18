@@ -1,10 +1,14 @@
 import type {
   Account,
   AccountCreate,
+  KanbanBoard,
+  KanbanColumn,
   Post,
   PostCreate,
   TgDialog,
   TgMessage,
+  TgProfile,
+  TgStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -15,6 +19,13 @@ export const tokenStore = {
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
+
+// Управляемый logout: вместо жёсткой перезагрузки страницы (теряется весь стейт)
+// клиент дёргает обработчик, который ставит App в состояние «не авторизован».
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
 
 function authHeaders(): Record<string, string> {
   const t = tokenStore.get();
@@ -31,9 +42,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (res.status === 401 && !path.startsWith("/auth")) {
-    // токен истёк/невалиден — разлогиниваем и показываем вход
+    // токен истёк/невалиден — разлогиниваем мягко (без перезагрузки страницы)
     tokenStore.clear();
-    window.location.reload();
+    if (onUnauthorized) onUnauthorized();
+    else window.location.reload();
+    throw new Error("unauthorized");
   }
   if (!res.ok) {
     let detail = res.statusText;
@@ -126,8 +139,24 @@ export const api = {
       "/telegram/user/login/password",
       { method: "POST", body: JSON.stringify({ login_id, password }) }
     ),
-  tgUserDialogs: (accountId: number) =>
-    request<TgDialog[]>(`/telegram/user/${accountId}/dialogs`),
+  tgUserDialogs: (accountId: number, limit = 50, offset = 0) =>
+    request<TgDialog[]>(
+      `/telegram/user/${accountId}/dialogs?limit=${limit}&offset=${offset}`
+    ),
+  tgUserAvatarUrl: (accountId: number, dialogId: number) =>
+    `/api/telegram/user/${accountId}/avatar/${dialogId}?token=${
+      tokenStore.get() ?? ""
+    }`,
+  tgUserStreamUrl: (accountId: number) =>
+    `/api/telegram/user/${accountId}/stream?token=${tokenStore.get() ?? ""}`,
+  tgUserPresence: (accountId: number, dialogId: number) =>
+    request<TgStatus>(`/telegram/user/${accountId}/dialogs/${dialogId}/status`),
+  tgUserProfile: (accountId: number, dialogId: number) =>
+    request<TgProfile>(`/telegram/user/${accountId}/profile/${dialogId}`),
+  tgUserProfilePhotoUrl: (accountId: number, dialogId: number, index: number) =>
+    `/api/telegram/user/${accountId}/profile/${dialogId}/photo/${index}?token=${
+      tokenStore.get() ?? ""
+    }`,
   tgUserMessages: (accountId: number, dialogId: number) =>
     request<TgMessage[]>(`/telegram/user/${accountId}/dialogs/${dialogId}/messages`),
   tgUserSend: (
@@ -147,6 +176,41 @@ export const api = {
     `/api/telegram/user/${accountId}/media/${dialogId}/${msgId}?token=${
       tokenStore.get() ?? ""
     }`,
+  // CRM-канбан (доска инбокса, общая для всех устройств)
+  kanbanGet: (accountId: number) =>
+    request<KanbanBoard>(`/kanban/${accountId}`),
+  kanbanSetColumns: (accountId: number, columns: KanbanColumn[]) =>
+    request<KanbanBoard>(`/kanban/${accountId}/columns`, {
+      method: "PUT",
+      body: JSON.stringify({ columns }),
+    }),
+  kanbanSetPlacement: (
+    accountId: number,
+    dialogId: string,
+    columnId: string
+  ) =>
+    request<KanbanBoard>(`/kanban/${accountId}/placement`, {
+      method: "PUT",
+      body: JSON.stringify({ dialog_id: dialogId, column_id: columnId }),
+    }),
+  kanbanBroadcast: (
+    accountId: number,
+    columnId: string,
+    text: string,
+    mediaUrls: string[] = [],
+  ) =>
+    request<{ sent: number; failed: number; total: number }>(
+      `/kanban/${accountId}/broadcast`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          column_id: columnId,
+          text,
+          media_urls: mediaUrls,
+        }),
+      },
+    ),
+
   instagramOAuthStart: () =>
     request<{ url: string }>("/instagram/oauth/start"),
   instagramOAuthExchange: (code: string) =>

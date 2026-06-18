@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useComposer } from "../composer";
 import {
   Button,
   Card,
@@ -16,6 +16,7 @@ import {
   TextInput,
   Select,
   Pagination,
+  Badge,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -27,26 +28,30 @@ import {
   IconPhoto,
   IconSearch,
   IconFilterOff,
+  IconBrandTelegram,
+  IconBrandInstagram,
+  IconPencil,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Post, PostStatus } from "../api/types";
 import { PageHeader, StatusBadge, EmptyState } from "../components/ui";
 
-const STATUS_OPTIONS: { value: PostStatus | "all"; label: string }[] = [
-  { value: "all", label: "Все статусы" },
-  { value: "draft", label: "Черновик" },
-  { value: "scheduled", label: "Запланирован" },
-  { value: "publishing", label: "Публикуется" },
-  { value: "published", label: "Опубликован" },
-  { value: "failed", label: "Ошибка" },
-];
+const PAGE_SIZE_OPTIONS = ["5", "10", "20", "50", "100"];
+const DEFAULT_PAGE_SIZE = "20";
 
-const PAGE_SIZE_OPTIONS = ["6", "12", "24", "48"];
-const DEFAULT_PAGE_SIZE = "12";
-
-export function Publications() {
-  const nav = useNavigate();
+export function Publications({ embedded }: { embedded?: boolean } = {}) {
+  const { open, edit } = useComposer();
+  const { t } = useTranslation();
+  const STATUS_OPTIONS: { value: PostStatus | "all"; label: string }[] = [
+    { value: "all", label: t("publications.allStatuses") },
+    { value: "draft", label: t("status.draft") },
+    { value: "scheduled", label: t("status.scheduled") },
+    { value: "publishing", label: t("status.publishing") },
+    { value: "published", label: t("status.published") },
+    { value: "failed", label: t("status.failed") },
+  ];
   const [posts, setPosts] = useState<Post[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,14 +90,14 @@ export function Publications() {
 
   async function remove(id: number) {
     await api.deletePost(id);
-    notifications.show({ color: "gray", message: "Пост удалён" });
+    notifications.show({ color: "gray", message: t("publications.deletedToast") });
     load();
   }
 
   async function publishNow(id: number) {
     try {
       await api.publishNow(id);
-      notifications.show({ color: "teal", message: "Опубликовано 🚀" });
+      notifications.show({ color: "teal", message: t("publications.publishedToast") });
       load();
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
@@ -101,11 +106,17 @@ export function Publications() {
 
   const accountOptions = useMemo(
     () => [
-      { value: "all", label: "Все аккаунты" },
+      { value: "all", label: t("publications.allAccounts") },
       ...accounts.map((a) => ({ value: String(a.id), label: a.display_name })),
     ],
-    [accounts],
+    [accounts, t],
   );
+
+  const accountMap = useMemo(() => {
+    const m = new Map<number, Account>();
+    accounts.forEach((a) => m.set(a.id, a));
+    return m;
+  }, [accounts]);
 
   const hasFilters =
     search.trim() !== "" || status !== "all" || account !== "all";
@@ -141,44 +152,46 @@ export function Publications() {
 
   return (
     <Box>
-      <PageHeader
-        title="Публикации"
-        subtitle="Создавайте посты для Telegram и Instagram и ставьте их на расписание"
-        action={
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => nav("/compose")}
-            disabled={accounts.length === 0}
-          >
-            Новая публикация
-          </Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title={t("publications.title")}
+          subtitle={t("publications.subtitle")}
+          action={
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => open()}
+              disabled={accounts.length === 0}
+            >
+              {t("publications.newBtn")}
+            </Button>
+          }
+        />
+      )}
 
       {loading ? (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} h={220} radius="lg" />
+        <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, lg: 4, xl: 5 }} spacing="md">
+          {[...Array(10)].map((_, i) => (
+            <Skeleton key={i} h={240} radius={20} />
           ))}
         </SimpleGrid>
       ) : posts.length === 0 ? (
         <Card>
           <EmptyState
             icon={<IconCalendarTime size={32} />}
-            title="Пока нет публикаций"
+            title={t("publications.emptyTitle")}
             description={
               accounts.length === 0
-                ? "Сначала подключите аккаунт во вкладке «Аккаунты», затем создайте первый пост."
-                : "Создайте первую публикацию — её можно опубликовать сразу или поставить на расписание."
+                ? t("publications.emptyDescNoAccounts")
+                : t("publications.emptyDesc")
             }
             action={
               accounts.length > 0 && (
                 <Button
                   mt="sm"
                   leftSection={<IconPlus size={16} />}
-                  onClick={() => nav("/compose")}
+                  onClick={() => open()}
                 >
-                  Создать публикацию
+                  {t("publications.createBtn")}
                 </Button>
               )
             }
@@ -191,14 +204,14 @@ export function Publications() {
             <TextInput
               flex={1}
               miw={220}
-              placeholder="Поиск по тексту поста"
+              placeholder={t("publications.searchPh")}
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
             />
             <Select
               w={180}
-              placeholder="Статус"
+              placeholder={t("publications.statusPh")}
               data={STATUS_OPTIONS}
               value={status}
               onChange={setStatus}
@@ -207,7 +220,7 @@ export function Publications() {
             />
             <Select
               w={200}
-              placeholder="Аккаунт"
+              placeholder={t("publications.accountPh")}
               data={accountOptions}
               value={account}
               onChange={setAccount}
@@ -221,7 +234,7 @@ export function Publications() {
                 leftSection={<IconFilterOff size={16} />}
                 onClick={resetFilters}
               >
-                Сбросить
+                {t("publications.reset")}
               </Button>
             )}
           </Group>
@@ -230,8 +243,8 @@ export function Publications() {
             <Card>
               <EmptyState
                 icon={<IconSearch size={32} />}
-                title="Ничего не найдено"
-                description="По выбранным фильтрам публикаций нет. Измените условия или сбросьте фильтры."
+                title={t("publications.notFoundTitle")}
+                description={t("publications.notFoundDesc")}
                 action={
                   <Button
                     mt="sm"
@@ -239,20 +252,23 @@ export function Publications() {
                     leftSection={<IconFilterOff size={16} />}
                     onClick={resetFilters}
                   >
-                    Сбросить фильтры
+                    {t("publications.resetFilters")}
                   </Button>
                 }
               />
             </Card>
           ) : (
             <>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+              <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, lg: 4, xl: 5 }} spacing="md">
                 {pageItems.map((post) => (
                   <PostCard
                     key={post.id}
                     post={post}
+                    accountMap={accountMap}
                     onDelete={() => remove(post.id)}
                     onPublishNow={() => publishNow(post.id)}
+                    onEdit={() => edit(post, "edit")}
+                    onRepublish={() => edit(post, "republish")}
                   />
                 ))}
               </SimpleGrid>
@@ -260,12 +276,12 @@ export function Publications() {
               {/* Пагинация + размер страницы */}
               <Group justify="space-between" align="center" mt="xs" wrap="wrap">
                 <Text fz="sm" c="dimmed">
-                  Показано {pageItems.length} из {filtered.length}
+                  {t("publications.shown", { shown: pageItems.length, total: filtered.length })}
                 </Text>
                 <Group gap="lg" wrap="wrap">
                   <Group gap="xs">
                     <Text fz="sm" c="dimmed">
-                      На странице:
+                      {t("publications.perPage")}
                     </Text>
                     <Select
                       w={84}
@@ -296,92 +312,164 @@ export function Publications() {
 
 function PostCard({
   post,
+  accountMap,
   onDelete,
   onPublishNow,
+  onEdit,
+  onRepublish,
 }: {
   post: Post;
+  accountMap: Map<number, Account>;
   onDelete: () => void;
   onPublishNow: () => void;
+  onEdit: () => void;
+  onRepublish: () => void;
 }) {
+  const { t } = useTranslation();
   const when = post.scheduled_at
-    ? dayjs(post.scheduled_at).format("DD MMM YYYY, HH:mm")
-    : "Без расписания";
+    ? dayjs(post.scheduled_at).format("DD MMM, HH:mm")
+    : t("publications.noSchedule");
+  const mediaCount = post.media_urls.length;
 
   return (
-    <Card>
-      <Card.Section>
+    <Card p={0} style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* Медиа + оверлеи: статус, меню, счётчик медиа */}
+      <Box style={{ position: "relative" }}>
         {post.media_urls[0] ? (
-          <Image
-            src={post.media_urls[0]}
-            h={140}
-            fit="cover"
-            fallbackSrc="https://placehold.co/400x140?text=Без+фото"
-          />
+          <Image src={post.media_urls[0]} h={130} fit="cover" />
         ) : (
           <Box
-            h={140}
+            h={130}
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "var(--mantine-color-gray-1)",
-              color: "var(--mantine-color-gray-5)",
+              background:
+                "linear-gradient(135deg, rgba(125,82,249,0.28), rgba(74,163,255,0.22))",
+              color: "rgba(255,255,255,0.85)",
             }}
           >
-            <IconPhoto size={28} />
+            <IconPhoto size={26} />
           </Box>
         )}
-      </Card.Section>
-
-      <Group justify="space-between" mt="sm" mb={4} wrap="nowrap">
-        <StatusBadge status={post.status} />
+        <Box style={{ position: "absolute", top: 8, left: 8 }}>
+          <StatusBadge status={post.status} />
+        </Box>
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
-            <ActionIcon variant="subtle" color="gray">
-              <IconDots size={18} />
+            <ActionIcon
+              variant="default"
+              size="sm"
+              radius="md"
+              style={{ position: "absolute", top: 8, right: 8 }}
+            >
+              <IconDots size={15} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
-            <Menu.Item
-              leftSection={<IconBolt size={16} />}
-              onClick={onPublishNow}
-            >
-              Опубликовать сейчас
-            </Menu.Item>
+            {post.status === "scheduled" && (
+              <Menu.Item leftSection={<IconPencil size={16} />} onClick={onEdit}>
+                {t("publications.edit")}
+              </Menu.Item>
+            )}
+            {post.status === "published" ? (
+              <Menu.Item leftSection={<IconBolt size={16} />} onClick={onRepublish}>
+                {t("publications.editPublish")}
+              </Menu.Item>
+            ) : (
+              <Menu.Item leftSection={<IconBolt size={16} />} onClick={onPublishNow}>
+                {t("publications.publishNow")}
+              </Menu.Item>
+            )}
             <Menu.Item
               color="red"
               leftSection={<IconTrash size={16} />}
               onClick={onDelete}
             >
-              Удалить
+              {t("publications.deleteItem")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
-      </Group>
-
-      <Text fz="sm" lineClamp={3} mih={60}>
-        {post.content || <Text span c="dimmed">(без текста)</Text>}
-      </Text>
-
-      <Group gap={6} mt="sm" c="dimmed">
-        <IconCalendarTime size={14} />
-        <Text fz="xs">{when}</Text>
-      </Group>
-
-      <Group gap={4} mt={6}>
-        {post.targets.map((t) => (
-          <Tooltip
-            key={t.id}
-            label={t.error ?? t.status}
-            disabled={!t.error}
-            color="red"
+        {mediaCount > 1 && (
+          <Badge
+            size="sm"
+            variant="filled"
+            color="dark"
+            leftSection={<IconPhoto size={11} />}
+            style={{ position: "absolute", bottom: 8, right: 8 }}
           >
-            <Box>
-              <StatusBadge status={t.status} />
-            </Box>
-          </Tooltip>
-        ))}
-      </Group>
+            {mediaCount}
+          </Badge>
+        )}
+      </Box>
+
+      <Stack gap={8} p="sm" style={{ flex: 1 }}>
+        {/* Индикаторы: в какие аккаунты/платформы идёт пост.
+            Иконка соцсети с лёгким неоновым свечением + имя аккаунта в её цвете. */}
+        {post.targets.length > 0 && (
+          <Group gap={6} wrap="wrap">
+            {post.targets.map((tg) => {
+              const acc = accountMap.get(tg.account_id);
+              const ig = acc?.platform === "instagram";
+              const color = tg.error ? "#ff5470" : ig ? "#e1306c" : "#2aabee";
+              return (
+                <Tooltip
+                  key={tg.id}
+                  withArrow
+                  label={`${acc?.display_name ?? "—"} · ${t(`status.${tg.status}`)}${
+                    tg.error ? ` · ${tg.error}` : ""
+                  }`}
+                  color={tg.error ? "red" : undefined}
+                >
+                  <Group
+                    gap={5}
+                    wrap="nowrap"
+                    style={{
+                      padding: "3px 9px 3px 7px",
+                      borderRadius: 999,
+                      maxWidth: "100%",
+                      background: `${color}1f`,
+                      border: `1px solid ${color}59`,
+                    }}
+                  >
+                    <Box
+                      style={{
+                        display: "flex",
+                        color,
+                        filter: `drop-shadow(0 0 4px ${color}b3)`,
+                      }}
+                    >
+                      {ig ? (
+                        <IconBrandInstagram size={13} />
+                      ) : (
+                        <IconBrandTelegram size={13} />
+                      )}
+                    </Box>
+                    <Text fz={10} fw={700} lineClamp={1} style={{ color, lineHeight: 1.15 }}>
+                      {acc?.display_name ?? "—"}
+                    </Text>
+                  </Group>
+                </Tooltip>
+              );
+            })}
+          </Group>
+        )}
+
+        <Text fz="sm" lineClamp={2} mih={38}>
+          {post.content || (
+            <Text span c="dimmed">
+              {t("common.noText")}
+            </Text>
+          )}
+        </Text>
+
+        <Group gap={6} c="dimmed" mt="auto" wrap="nowrap">
+          <IconCalendarTime size={14} />
+          <Text fz="xs" lineClamp={1}>
+            {when}
+          </Text>
+        </Group>
+      </Stack>
     </Card>
   );
 }

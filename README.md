@@ -32,6 +32,22 @@ uvicorn app.main:app --reload --port 8000
 
 API: http://localhost:8000/docs
 
+#### Миграции БД (Alembic)
+
+Схема версионируется в `alembic/versions`. При старте бэкенд сам накатывает
+непримененные миграции (`alembic upgrade head`), так что обычно ничего делать не
+нужно. Когда меняешь модель в `app/models.py`:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "что поменялось"   # сгенерирует файл миграции
+alembic upgrade head                                   # накатит (или просто перезапусти бэкенд)
+```
+
+Полезное: `alembic current` — текущая ревизия, `alembic history` — все миграции,
+`alembic downgrade -1` — откат на шаг, `alembic check` — есть ли незакоммиченные
+изменения схемы (модели разошлись с миграциями).
+
 ### 2. Frontend
 
 ```bash

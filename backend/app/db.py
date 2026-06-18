@@ -30,31 +30,22 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    # модели импортируются ради регистрации в метаданных
-    from . import models  # noqa: F401
+    """Накатывает все непримененные миграции (alembic upgrade head).
 
-    Base.metadata.create_all(bind=engine)
-    _run_lightweight_migrations()
+    Заменяет прежний create_all + ручные ALTER: схема теперь версионируется в
+    alembic/versions. Свежая БД строится с нуля, существующая — догоняется без
+    потери данных. Новое изменение схемы:
+        1) поправить модель в models.py
+        2) alembic revision --autogenerate -m "что поменялось"
+        3) перезапустить бэкенд (или alembic upgrade head) — миграция накатится
+    """
+    from pathlib import Path
 
+    from alembic import command
+    from alembic.config import Config
 
-def _run_lightweight_migrations() -> None:
-    """Простые аддитивные миграции для dev (SQLite): добавляем недостающие
-    колонки без потери данных. На проде заменим на Alembic."""
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(engine)
-    if "posts" not in inspector.get_table_names():
-        return
-    cols = {c["name"] for c in inspector.get_columns("posts")}
-    if "platform_options" not in cols:
-        with engine.begin() as conn:
-            conn.execute(
-                text("ALTER TABLE posts ADD COLUMN platform_options JSON DEFAULT '{}'")
-            )
-
-    if "users" in inspector.get_table_names():
-        ucols = {c["name"] for c in inspector.get_columns("users")}
-        with engine.begin() as conn:
-            for col in ("phone", "password_hash", "name"):
-                if col not in ucols:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR"))
+    backend_dir = Path(__file__).resolve().parent.parent  # .../backend
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    # абсолютные пути — чтобы не зависеть от текущей рабочей директории
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(cfg, "head")
