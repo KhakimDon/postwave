@@ -38,7 +38,7 @@ export function LanguageSwitcher({
               key={l.code}
               onClick={() => setLanguage(l.code)}
               leftSection={<Flag cc={l.cc} />}
-              bg={l.code === current.code ? "var(--mantine-color-brand-0)" : undefined}
+              bg={l.code === current.code ? "var(--accent-soft)" : undefined}
             >
               {l.label}
             </Menu.Item>

@@ -46,6 +46,7 @@ export interface TelegramOptions {
   silent?: boolean;
   no_preview?: boolean;
   parse_mode?: "MarkdownV2" | "HTML" | null;
+  as_file?: boolean; // оригинальное качество — слать медиа как файл (без сжатия)
 }
 
 export interface InstagramOptions {
@@ -64,6 +65,9 @@ export interface PlatformOptions {
   instagram?: InstagramOptions;
 }
 
+// Соцсеть инбокса. Telegram — реальный (MTProto). Instagram — пока демо во фронте.
+export type Network = "telegram" | "instagram" | "facebook" | "threads";
+
 export interface TgDialog {
   id: number;
   name: string;
@@ -74,6 +78,27 @@ export interface TgDialog {
   last_message: string;
   date: string | null;
   online?: boolean;
+  // Сеть диалога (по умолчанию telegram). Для Instagram — "instagram".
+  network?: Network;
+  // Готовый URL аватара (Instagram); у Telegram аватар грузится по API.
+  avatar_url?: string;
+  // Instagram-scoped id собеседника (для вызовов IG-инбокса).
+  igsid?: string;
+}
+
+export interface IgApiDialog {
+  igsid: string;
+  name: string | null;
+  last_message: string;
+  date: string | null;
+  unread: number;
+}
+
+export interface IgApiMessage {
+  id: number;
+  text: string;
+  out: boolean;
+  date: string | null;
 }
 
 export interface TgMessage {
@@ -112,6 +137,10 @@ export interface TgProfile {
   phone: string | null;
   bio: string | null;
   photo_count: number;
+  is_user: boolean;
+  is_contact: boolean;
+  first_name: string | null;
+  last_name: string | null;
 }
 
 export interface KanbanBoard {

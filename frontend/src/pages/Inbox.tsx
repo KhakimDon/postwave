@@ -6,7 +6,6 @@ import {
   Text,
   Button,
   TextInput,
-  PasswordInput,
   ScrollArea,
   Paper,
   Badge,
@@ -19,28 +18,48 @@ import {
   SegmentedControl,
   Drawer,
   Skeleton,
+  Popover,
+  UnstyledButton,
+  Menu,
 } from "@mantine/core";
 import { useMediaQuery, useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconBrandTelegram,
+  IconBrandInstagram,
+  IconBrandFacebook,
+  IconBrandThreads,
   IconPlus,
   IconMessageChatbot,
-  IconSettings,
+  IconPencil,
   IconSearch,
-  IconUserCircle,
   IconSettings2,
   IconSpeakerphone,
+  IconFilter,
+  IconCheck,
+  IconLayoutGrid,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { notifyMessage } from "../notify";
-import type { Account, KanbanColumn, TgDialog, TgMessage } from "../api/types";
+import type { Account, KanbanColumn, Network, TgDialog, TgMessage } from "../api/types";
 import { PageHeader, EmptyState } from "../components/ui";
 import { InboxKanban } from "../components/InboxKanban";
 import { ChatAvatar } from "../components/ChatAvatar";
 import { Conversation } from "../components/Conversation";
+import { InstagramConversation } from "../components/InstagramConversation";
+import { TelegramUserLogin } from "../components/TelegramUserLogin";
+
+// Стабильный отрицательный числовой id из igsid (строки) — для ключей React и
+// раскладки канбана (placements хранятся по id). Отрицательный — чтобы не
+// пересекаться с положительными Telegram-id.
+function igNumId(igsid: string): number {
+  let h = 0;
+  for (let i = 0; i < igsid.length; i++) h = (h * 31 + igsid.charCodeAt(i)) | 0;
+  return -Math.abs(h) - 1;
+}
 import { BroadcastModal } from "../components/BroadcastModal";
 import { AccountSettings } from "../components/AccountSettings";
 import { ProfileModal } from "../components/ProfileModal";
@@ -53,6 +72,167 @@ import {
 } from "../kanban";
 
 const DIALOG_PAGE = 40;
+
+/* Каталог соцсетей инбокса (лого + бренд-цвет). */
+interface SocialMeta {
+  id: Network;
+  label: string;
+  Icon: typeof IconBrandTelegram;
+  color: string;
+}
+const SOCIALS: SocialMeta[] = [
+  { id: "telegram", label: "Telegram", Icon: IconBrandTelegram, color: "#229ED9" },
+  { id: "instagram", label: "Instagram", Icon: IconBrandInstagram, color: "#E4405F" },
+  { id: "facebook", label: "Facebook", Icon: IconBrandFacebook, color: "#1877F2" },
+  { id: "threads", label: "Threads", Icon: IconBrandThreads, color: "var(--mantine-color-text)" },
+];
+
+/* Переключатель соцсетей: icon-only стеклянная кнопка с лого активной сети,
+   по клику вниз раскрывается поповер. Показываются только ПОДКЛЮЧЁННЫЕ сети. */
+function SocialSwitcher({
+  networks,
+  value,
+  onChange,
+}: {
+  networks: SocialMeta[];
+  value: Network;
+  onChange: (n: Network) => void;
+}) {
+  const [opened, setOpened] = useState(false);
+  const current = networks.find((s) => s.id === value) ?? networks[0];
+  if (!current) return null;
+  const CurrentIcon = current.Icon;
+
+  function pick(id: Network) {
+    onChange(id);
+    setOpened(false);
+  }
+
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-start"
+      offset={10}
+      withinPortal
+      transitionProps={{ transition: "pop-top-left", duration: 180 }}
+      classNames={{ dropdown: "pw-social-pop" }}
+    >
+      <Popover.Target>
+        <UnstyledButton
+          className="pw-social-trigger"
+          data-opened={opened || undefined}
+          onClick={() => setOpened((o) => !o)}
+          aria-label={`Social network: ${current.label}`}
+        >
+          <CurrentIcon size={20} color={current.color} />
+        </UnstyledButton>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap={4} align="center">
+          {networks.map((s, i) => {
+            const Icon = s.Icon;
+            const isActive = s.id === current.id;
+            return (
+              <UnstyledButton
+                key={s.id}
+                className="pw-social-item"
+                data-active={isActive || undefined}
+                onClick={() => pick(s.id)}
+                aria-label={s.label}
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
+                <Icon size={20} color={s.color} />
+              </UnstyledButton>
+            );
+          })}
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+/* Переключатель аккаунтов текущей сети: кнопка с именем аккаунта + стеклянный
+   popup (в стиле переключателя соцсетей) со списком аккаунтов этой сети. */
+function AccountSwitcher({
+  network,
+  accounts,
+  currentId,
+  onPick,
+  onAdd,
+}: {
+  network: Network;
+  accounts: Account[];
+  currentId: number | null;
+  onPick: (id: number) => void;
+  onAdd: () => void;
+}) {
+  const { t } = useTranslation();
+  const [opened, setOpened] = useState(false);
+  const meta = SOCIALS.find((s) => s.id === network) ?? SOCIALS[0];
+  const Icon = meta.Icon;
+  const current = accounts.find((a) => a.id === currentId) ?? accounts[0];
+
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      position="bottom-end"
+      offset={10}
+      withinPortal
+      transitionProps={{ transition: "pop-top-right", duration: 180 }}
+      classNames={{ dropdown: "pw-acc-pop" }}
+    >
+      <Popover.Target>
+        <UnstyledButton
+          className="pw-acc-trigger"
+          data-opened={opened || undefined}
+          onClick={() => setOpened((o) => !o)}
+        >
+          <Icon size={16} color={meta.color} />
+          <span className="pw-acc-trigger-name">
+            {current?.display_name ?? "—"}
+          </span>
+          <IconChevronDown size={13} className="pw-acc-caret" />
+        </UnstyledButton>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap={3}>
+          {accounts.map((a, i) => (
+            <UnstyledButton
+              key={a.id}
+              className="pw-acc-item"
+              data-active={a.id === current?.id || undefined}
+              onClick={() => {
+                onPick(a.id);
+                setOpened(false);
+              }}
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              <span className="pw-acc-chip" style={{ color: meta.color }}>
+                <Icon size={16} />
+              </span>
+              <span className="pw-acc-name">{a.display_name}</span>
+              {a.id === current?.id && <IconCheck size={15} className="pw-acc-check" />}
+            </UnstyledButton>
+          ))}
+          <UnstyledButton
+            className="pw-acc-item pw-acc-add"
+            onClick={() => {
+              onAdd();
+              setOpened(false);
+            }}
+          >
+            <span className="pw-acc-chip">
+              <IconPlus size={15} />
+            </span>
+            <span className="pw-acc-name">{t("inbox.accountBtn")}</span>
+          </UnstyledButton>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 export function Inbox() {
   const { t } = useTranslation();
@@ -70,10 +250,32 @@ export function Inbox() {
   const [profileOpen, setProfileOpen] = useState(false);
   // выезжающая панель чата в табе «Канбан»
   const [kanbanChatOpen, setKanbanChatOpen] = useState(false);
+  // активная соцсеть инбокса (показываем только подключённые)
+  const [network, setNetwork] = useState<Network>(
+    () => (localStorage.getItem("postwave_inbox_social") as Network) || "telegram",
+  );
+  // выбранный Instagram-диалог (таб «Чат» и дровер канбана)
+  const [activeIg, setActiveIg] = useState<TgDialog | null>(null);
+  // выбранный Instagram-аккаунт (если их несколько)
+  const [igAccountId, setIgAccountId] = useState<number | null>(null);
+  // диалоги Instagram (реальные, из API)
+  const [igDialogs, setIgDialogs] = useState<TgDialog[]>([]);
+  // для уведомлений: предыдущие счётчики непрочитанных по igsid + открытый IG-чат
+  const igPrevUnread = useRef<Record<string, number> | null>(null);
+  const activeIgRef = useRef<TgDialog | null>(null);
+  // фильтр канбана по аккаунту: "all" — все подключённые, иначе id аккаунта
+  const [kanbanAccount, setKanbanAccount] = useState<"all" | number>("all");
 
   function changeView(v: "chat" | "kanban") {
     setView(v);
     localStorage.setItem("postwave_inbox_view", v);
+  }
+
+  function changeNetwork(n: Network) {
+    setNetwork(n);
+    localStorage.setItem("postwave_inbox_social", n);
+    setActiveIg(null);
+    setActiveDialog(null);
   }
 
   const [dialogs, setDialogs] = useState<TgDialog[]>([]);
@@ -109,28 +311,143 @@ export function Inbox() {
   );
   const currentAccount = tgAccounts.find((a) => a.id === accountId);
 
-  // Диалоги после поиска/фильтров (применяются и к списку чатов, и к канбану)
-  const filteredDialogs = useMemo(() => {
+  // Какие сети подключены (есть аккаунт). Telegram — по telegram_user, IG — по instagram.
+  const connected = useMemo(() => {
+    const set = new Set<Network>();
+    if (accounts.some((a) => a.platform === "telegram_user")) set.add("telegram");
+    if (accounts.some((a) => a.platform === "instagram")) set.add("instagram");
+    return set;
+  }, [accounts]);
+  const connectedNetworks = useMemo(
+    () => SOCIALS.filter((s) => connected.has(s.id)),
+    [connected]
+  );
+  const igAccounts = useMemo(
+    () => accounts.filter((a) => a.platform === "instagram"),
+    [accounts]
+  );
+  const igAccount = useMemo(
+    () =>
+      igAccounts.find((a) => a.id === igAccountId) ?? igAccounts[0] ?? null,
+    [igAccounts, igAccountId]
+  );
+
+  useEffect(() => {
+    activeIgRef.current = activeIg;
+  }, [activeIg]);
+
+  // Загрузка реальных IG-диалогов + поллинг (вебхук доставляет асинхронно).
+  // При росте непрочитанных в неоткрытом чате — тост-уведомление (как в Telegram).
+  useEffect(() => {
+    if (!igAccount) {
+      setIgDialogs([]);
+      igPrevUnread.current = null;
+      return;
+    }
+    const accId = igAccount.id;
+    let alive = true;
+    const load = () =>
+      api
+        .igDialogs(accId)
+        .then((rows) => {
+          if (!alive) return;
+          const mapped = rows.map((d) => ({
+            id: igNumId(d.igsid),
+            igsid: d.igsid,
+            name: d.name || d.igsid,
+            is_user: true,
+            is_group: false,
+            is_channel: false,
+            unread: d.unread,
+            last_message: d.last_message,
+            date: d.date,
+            network: "instagram" as const,
+          }));
+          setIgDialogs(mapped);
+
+          // уведомления: только если это не первая загрузка
+          const prev = igPrevUnread.current;
+          if (prev) {
+            for (const d of mapped) {
+              const before = prev[d.igsid] ?? 0;
+              const open = activeIgRef.current?.igsid === d.igsid;
+              if (d.unread > before && !open) {
+                notifyMessage({
+                  accountId: accId,
+                  dialogId: d.id,
+                  name: d.name,
+                  text: d.last_message,
+                  avatarUrl: null,
+                });
+              }
+            }
+          }
+          igPrevUnread.current = Object.fromEntries(
+            mapped.map((d) => [d.igsid, d.unread])
+          );
+        })
+        .catch(() => {});
+    load();
+    const tm = setInterval(load, 7000);
+    return () => {
+      alive = false;
+      clearInterval(tm);
+    };
+  }, [igAccount]);
+  // если сохранённая сеть не подключена — переключаемся на первую подключённую
+  useEffect(() => {
+    if (connectedNetworks.length && !connected.has(network)) {
+      changeNetwork(connectedNetworks[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedNetworks]);
+
+  // Предикат поиска/фильтров — общий для Telegram и Instagram
+  const matchDialog = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
     const now = dayjs();
     const days =
       dateFilter === "today" ? 1 : dateFilter === "7d" ? 7 : dateFilter === "30d" ? 30 : 0;
-    return dialogs.filter((d) => {
+    return (d: TgDialog) => {
       if (
         q &&
         !(d.name || "").toLowerCase().includes(q) &&
         !(d.last_message || "").toLowerCase().includes(q)
       )
         return false;
-      if (
-        filterCol !== "__all__" &&
-        columnIdOf(d.id, columns, placements) !== filterCol
-      )
+      if (filterCol !== "__all__" && columnIdOf(d.id, columns, placements) !== filterCol)
         return false;
       if (days && d.date && now.diff(dayjs(d.date), "day") >= days) return false;
       return true;
-    });
-  }, [dialogs, debouncedSearch, filterCol, dateFilter, columns, placements]);
+    };
+  }, [debouncedSearch, filterCol, dateFilter, columns, placements]);
+
+  const tgFiltered = useMemo(() => dialogs.filter(matchDialog), [dialogs, matchDialog]);
+  const igFiltered = useMemo(
+    () => (connected.has("instagram") ? igDialogs.filter(matchDialog) : []),
+    [connected, igDialogs, matchDialog]
+  );
+  // Канбан — оба (по подключённым сетям) с фильтром по сети. Таб «Чат» берёт
+  // tgFiltered/igFiltered напрямую.
+  const kanbanDialogs = useMemo(() => {
+    const merged = [...(connected.has("telegram") ? tgFiltered : []), ...igFiltered];
+    if (kanbanAccount === "all") return merged;
+    const acc = accounts.find((a) => a.id === kanbanAccount);
+    if (!acc) return merged;
+    const net: Network = acc.platform === "instagram" ? "instagram" : "telegram";
+    return merged.filter((d) => (d.network ?? "telegram") === net);
+  }, [connected, tgFiltered, igFiltered, kanbanAccount, accounts]);
+
+  // Выбор аккаунта в фильтре канбана: переключаем активный аккаунт нужной сети,
+  // чтобы подгрузились его диалоги.
+  function pickKanbanAccount(val: "all" | number) {
+    setKanbanAccount(val);
+    if (val === "all") return;
+    const acc = accounts.find((a) => a.id === val);
+    if (!acc) return;
+    if (acc.platform === "telegram_user") setAccountId(val);
+    else if (acc.platform === "instagram") setIgAccountId(val);
+  }
 
   async function loadAccounts() {
     const a = await api.listAccounts();
@@ -139,6 +456,10 @@ export function Inbox() {
     // если текущий аккаунт пропал (отключили) или ещё не выбран — берём первый
     setAccountId((cur) =>
       cur != null && tg.some((x) => x.id === cur) ? cur : tg[0]?.id ?? null,
+    );
+    const ig = a.filter((x) => x.platform === "instagram");
+    setIgAccountId((cur) =>
+      cur != null && ig.some((x) => x.id === cur) ? cur : ig[0]?.id ?? null,
     );
   }
 
@@ -397,8 +718,8 @@ export function Inbox() {
     }
   }
 
-  // нет подключённого аккаунта
-  if (tgAccounts.length === 0) {
+  // нет ни одной подключённой сети инбокса
+  if (connectedNetworks.length === 0) {
     return (
       <Box>
         <PageHeader title={t("inbox.title")} subtitle={t("inbox.subtitle")} />
@@ -444,71 +765,110 @@ export function Inbox() {
       }
     >
       <Group justify="space-between" mb="sm" style={{ flexShrink: 0 }} wrap="wrap" gap="sm">
-        <SegmentedControl
-          value={view}
-          onChange={(v) => changeView(v as "chat" | "kanban")}
-          data={[
-            { value: "chat", label: t("inbox.tabChat") },
-            { value: "kanban", label: t("inbox.tabKanban") },
-          ]}
-        />
-        <Group gap="sm">
-          {/* имя текущего аккаунта + переключение, если их несколько */}
-          {tgAccounts.length > 1 ? (
-            <Select
-              size="xs"
-              w={170}
-              leftSection={<IconUserCircle size={15} />}
-              data={tgAccounts.map((a) => ({
-                value: String(a.id),
-                label: a.display_name,
-              }))}
-              value={accountId ? String(accountId) : null}
-              onChange={(v) => setAccountId(v ? Number(v) : null)}
-              allowDeselect={false}
-              comboboxProps={{ withinPortal: true }}
+        <Group gap="sm" wrap="nowrap">
+          {connectedNetworks.length > 0 && (
+            <SocialSwitcher
+              networks={connectedNetworks}
+              value={network}
+              onChange={changeNetwork}
             />
-          ) : (
-            currentAccount && (
-              <Group gap={6} wrap="nowrap">
-                <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
-                  <IconUserCircle size={15} />
-                </ThemeIcon>
-                <Text fz="sm" fw={600} lineClamp={1} maw={160}>
-                  {currentAccount.display_name}
-                </Text>
-              </Group>
-            )
           )}
-          {view === "kanban" && (
-            <>
-              <Button
-                size="xs"
-                variant="light"
-                color="grape"
-                leftSection={<IconSpeakerphone size={14} />}
-                onClick={() => setBroadcastOpen(true)}
-              >
-                {t("inbox.broadcast")}
-              </Button>
-              <Button
-                size="xs"
-                variant="default"
-                leftSection={<IconSettings size={14} />}
-                onClick={() => setKanbanSettingsOpen(true)}
-              >
-                {t("inbox.settings")}
-              </Button>
-            </>
-          )}
+          <SegmentedControl
+            value={view}
+            onChange={(v) => changeView(v as "chat" | "kanban")}
+            data={[
+              { value: "chat", label: t("inbox.tabChat") },
+              { value: "kanban", label: t("inbox.tabKanban") },
+            ]}
+          />
+        </Group>
+        <Group gap="sm">
+          {/* кнопка с именем аккаунта текущей сети + popup со списком аккаунтов */}
+          <AccountSwitcher
+            network={network}
+            accounts={network === "instagram" ? igAccounts : tgAccounts}
+            currentId={network === "instagram" ? igAccountId : accountId}
+            onPick={network === "instagram" ? setIgAccountId : setAccountId}
+            onAdd={() => {
+              if (network === "instagram") {
+                api
+                  .instagramOAuthStart()
+                  .then(({ url }) => {
+                    window.location.href = url;
+                  })
+                  .catch((e) =>
+                    notifications.show({ color: "red", message: (e as Error).message })
+                  );
+              } else {
+                setConnectOpen(true);
+              }
+            }}
+          />
+          {/* Рассылка — доступна в обоих табах (чат и канбан) */}
           <Button
             size="xs"
             variant="light"
-            leftSection={<IconPlus size={14} />}
-            onClick={() => setConnectOpen(true)}
+            color="grape"
+            leftSection={<IconSpeakerphone size={14} />}
+            onClick={() => setBroadcastOpen(true)}
           >
-            {t("inbox.accountBtn")}
+            {t("inbox.broadcast")}
           </Button>
+          {view === "kanban" && (
+            <Menu shadow="md" width={220} position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconFilter size={14} />}
+                >
+                  {kanbanAccount === "all"
+                    ? t("inbox.filterAllAccounts")
+                    : accounts.find((a) => a.id === kanbanAccount)?.display_name ??
+                      t("inbox.filterAllAccounts")}
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconLayoutGrid size={16} />}
+                  rightSection={kanbanAccount === "all" ? <IconCheck size={14} /> : null}
+                  onClick={() => pickKanbanAccount("all")}
+                >
+                  {t("inbox.filterAllAccounts")}
+                </Menu.Item>
+                {[...tgAccounts, ...igAccounts].map((a) => {
+                  const meta = SOCIALS.find(
+                    (s) =>
+                      s.id ===
+                      (a.platform === "instagram" ? "instagram" : "telegram")
+                  )!;
+                  const Icon = meta.Icon;
+                  return (
+                    <Menu.Item
+                      key={a.id}
+                      leftSection={<Icon size={16} color={meta.color} />}
+                      rightSection={
+                        kanbanAccount === a.id ? <IconCheck size={14} /> : null
+                      }
+                      onClick={() => pickKanbanAccount(a.id)}
+                    >
+                      {a.display_name}
+                    </Menu.Item>
+                  );
+                })}
+              </Menu.Dropdown>
+            </Menu>
+          )}
+          {view === "kanban" && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<IconPencil size={14} />}
+              onClick={() => setKanbanSettingsOpen(true)}
+            >
+              {t("inbox.editColumns")}
+            </Button>
+          )}
           <ActionIcon
             size={30}
             variant="default"
@@ -595,7 +955,7 @@ export function Inbox() {
           >
             <InboxKanban
               accountId={accountId}
-              dialogs={filteredDialogs}
+              dialogs={kanbanDialogs}
               columns={columns}
               placements={placements}
               loading={loadingDialogs || boardLoading}
@@ -605,7 +965,9 @@ export function Inbox() {
               onMove={movePlacement}
               onSaveColumns={saveColumns}
               onOpenChat={(d) => {
-                openDialog(d);
+                // IG-диалог открываем без загрузки TG-сообщений
+                if (d.network === "instagram") setActiveDialog(d);
+                else openDialog(d);
                 setKanbanChatOpen(true);
               }}
               settingsOpen={kanbanSettingsOpen}
@@ -613,6 +975,71 @@ export function Inbox() {
             />
           </Box>
         )
+      ) : network === "instagram" ? (
+        /* ===== Таб «Чат»: Instagram (демо) ===== */
+        <Paper
+          withBorder
+          radius="lg"
+          key="chat-ig"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            overflow: "hidden",
+            animation: "pwFade 220ms ease",
+          }}
+        >
+          <Box
+            style={{
+              width: isMobile ? "100%" : 320,
+              borderRight: "1px solid var(--mantine-color-gray-3)",
+              display: isMobile && activeIg ? "none" : "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            }}
+          >
+            <ScrollArea style={{ flex: 1 }} type="auto">
+              {igFiltered.map((d) => (
+                <DialogRow
+                  key={d.id}
+                  dialog={d}
+                  active={activeIg?.id === d.id}
+                  avatarUrl={d.avatar_url}
+                  dotColor={colorOf(d.id, columns, placements)}
+                  onClick={() => setActiveIg(d)}
+                />
+              ))}
+              {igFiltered.length === 0 && (
+                <Text c="dimmed" fz="sm" ta="center" mt="xl">
+                  {t("inbox.nothingFound")}
+                </Text>
+              )}
+            </ScrollArea>
+          </Box>
+          <Box
+            style={{
+              flex: 1,
+              display: isMobile && !activeIg ? "none" : "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            }}
+          >
+            {!activeIg || !igAccount ? (
+              <Center h="100%">
+                <Text c="dimmed" fz="sm">
+                  {t("inbox.selectDialog")}
+                </Text>
+              </Center>
+            ) : (
+              <InstagramConversation
+                accountId={igAccount.id}
+                dialog={activeIg}
+                showBack={isMobile}
+                onBack={() => setActiveIg(null)}
+              />
+            )}
+          </Box>
+        </Paper>
       ) : (
 
       <Paper
@@ -660,7 +1087,7 @@ export function Inbox() {
               }}
               viewportRef={dialogViewportRef}
             >
-              {filteredDialogs.map((d) => (
+              {tgFiltered.map((d) => (
                 <DialogRow
                   key={d.id}
                   dialog={d}
@@ -679,7 +1106,7 @@ export function Inbox() {
                   <Loader size="xs" />
                 </Center>
               )}
-              {filteredDialogs.length === 0 && (
+              {tgFiltered.length === 0 && (
                 <Text c="dimmed" fz="sm" ta="center" mt="xl">
                   {dialogs.length === 0 ? t("inbox.noDialogs") : t("inbox.nothingFound")}
                 </Text>
@@ -745,10 +1172,14 @@ export function Inbox() {
       <AccountSettings
         opened={accountSettingsOpen}
         onClose={() => setAccountSettingsOpen(false)}
-        accounts={tgAccounts}
-        currentId={accountId}
-        onSwitch={(id) => setAccountId(id)}
-        onAdd={() => setConnectOpen(true)}
+        accounts={[...tgAccounts, ...igAccounts]}
+        currentIds={[accountId, igAccountId].filter(
+          (x): x is number => x != null
+        )}
+        onSwitch={(acc) => {
+          if (acc.platform === "instagram") setIgAccountId(acc.id);
+          else setAccountId(acc.id);
+        }}
         onChanged={() => {
           loadAccounts();
         }}
@@ -756,7 +1187,7 @@ export function Inbox() {
 
       {/* Выезжающая панель чата в канбане (плавно, как модалка) */}
       <Drawer
-        opened={kanbanChatOpen && activeDialog != null && accountId != null}
+        opened={kanbanChatOpen && activeDialog != null}
         onClose={() => setKanbanChatOpen(false)}
         position="right"
         size={isMobile ? "100%" : 460}
@@ -767,32 +1198,44 @@ export function Inbox() {
           body: { flex: 1, minHeight: 0, padding: 0, display: "flex", flexDirection: "column" },
         }}
       >
-        {activeDialog != null && accountId != null && (
-          <Conversation
-            accountId={accountId}
-            dialog={activeDialog}
-            messages={messages}
-            loading={loadingMsgs}
-            draft={draft}
-            onDraftChange={setDraft}
-            sending={sending}
-            onSend={send}
-            onAttach={attachFile}
-            showBack
-            onBack={() => setKanbanChatOpen(false)}
-            onHeaderClick={() => setProfileOpen(true)}
-          />
-        )}
+        {activeDialog != null &&
+          (activeDialog.network === "instagram" ? (
+            igAccount && (
+              <InstagramConversation
+                accountId={igAccount.id}
+                dialog={activeDialog}
+                showBack
+                onBack={() => setKanbanChatOpen(false)}
+              />
+            )
+          ) : accountId != null ? (
+            <Conversation
+              accountId={accountId}
+              dialog={activeDialog}
+              messages={messages}
+              loading={loadingMsgs}
+              draft={draft}
+              onDraftChange={setDraft}
+              sending={sending}
+              onSend={send}
+              onAttach={attachFile}
+              showBack
+              onBack={() => setKanbanChatOpen(false)}
+              onHeaderClick={() => setProfileOpen(true)}
+            />
+          ) : null)}
       </Drawer>
 
-      {accountId != null && activeDialog != null && (
-        <ProfileModal
-          opened={profileOpen}
-          onClose={() => setProfileOpen(false)}
-          accountId={accountId}
-          dialog={activeDialog}
-        />
-      )}
+      {accountId != null &&
+        activeDialog != null &&
+        activeDialog.network !== "instagram" && (
+          <ProfileModal
+            opened={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            accountId={accountId}
+            dialog={activeDialog}
+          />
+        )}
     </Box>
   );
 }
@@ -890,75 +1333,10 @@ function ConnectModal({
   onConnected: () => void;
 }) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<"phone" | "code" | "password">("phone");
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginId, setLoginId] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  function reset() {
-    setStep("phone");
-    setPhone("");
-    setCode("");
-    setPassword("");
-    setLoginId("");
-  }
-
-  async function startLogin() {
-    setLoading(true);
-    try {
-      const r = await api.tgUserLoginStart(phone.trim());
-      setLoginId(r.login_id);
-      setStep("code");
-      notifications.show({ color: "blue", message: t("inbox.codeSentToast") });
-    } catch (e) {
-      notifications.show({ color: "red", message: (e as Error).message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function submitCode() {
-    setLoading(true);
-    try {
-      const r = await api.tgUserLoginCode(loginId, code.trim());
-      if (r.status === "password_needed") {
-        setStep("password");
-        notifications.show({ color: "blue", message: t("inbox.twofaToast") });
-      } else {
-        notifications.show({ color: "teal", message: t("inbox.connectedToast") });
-        reset();
-        onConnected();
-      }
-    } catch (e) {
-      notifications.show({ color: "red", message: (e as Error).message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function submitPassword() {
-    setLoading(true);
-    try {
-      await api.tgUserLoginPassword(loginId, password);
-      notifications.show({ color: "teal", message: t("inbox.connectedToast") });
-      reset();
-      onConnected();
-    } catch (e) {
-      notifications.show({ color: "red", message: (e as Error).message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <Modal
       opened={opened}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
+      onClose={onClose}
       title={
         <Group gap={8}>
           <ThemeIcon variant="light" color="blue" radius="md">
@@ -969,63 +1347,15 @@ function ConnectModal({
       }
       radius="lg"
     >
-      <Stack>
-        {step === "phone" && (
-          <>
-            <Text fz="sm" c="dimmed">
-              {t("inbox.phoneHint")}
-            </Text>
-            <TextInput
-              label={t("inbox.phoneLabel")}
-              placeholder={t("inbox.phonePh")}
-              value={phone}
-              onChange={(e) => setPhone(e.currentTarget.value)}
-            />
-            <Button
-              loading={loading}
-              onClick={startLogin}
-              disabled={phone.trim().length < 6}
-            >
-              {t("inbox.getCode")}
-            </Button>
-          </>
-        )}
-        {step === "code" && (
-          <>
-            <Text fz="sm" c="dimmed">
-              {t("inbox.codeHint")}
-            </Text>
-            <TextInput
-              label={t("inbox.codeLabel")}
-              placeholder={t("inbox.codePh")}
-              value={code}
-              onChange={(e) => setCode(e.currentTarget.value)}
-            />
-            <Button loading={loading} onClick={submitCode} disabled={!code.trim()}>
-              {t("inbox.confirm")}
-            </Button>
-          </>
-        )}
-        {step === "password" && (
-          <>
-            <Text fz="sm" c="dimmed">
-              {t("inbox.passwordHint")}
-            </Text>
-            <PasswordInput
-              label={t("inbox.passwordLabel")}
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
-            />
-            <Button
-              loading={loading}
-              onClick={submitPassword}
-              disabled={!password}
-            >
-              {t("inbox.login")}
-            </Button>
-          </>
-        )}
-      </Stack>
+      {/* монтируем заново на каждое открытие — свежий QR */}
+      {opened && (
+        <TelegramUserLogin
+          onConnected={() => {
+            onConnected();
+            onClose();
+          }}
+        />
+      )}
     </Modal>
   );
 }

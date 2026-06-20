@@ -9,7 +9,7 @@ import {
   Center,
   rem,
 } from "@mantine/core";
-import { Dropzone, IMAGE_MIME_TYPE, MIME_TYPES } from "@mantine/dropzone";
+import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { notifications } from "@mantine/notifications";
 import { IconUpload, IconX, IconPhotoPlus, IconVideo } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -65,8 +65,8 @@ export function MediaUploader({ media, onChange }: Props) {
     <Box>
       <Dropzone
         onDrop={handleDrop}
-        accept={[...IMAGE_MIME_TYPE, MIME_TYPES.mp4]}
-        maxSize={25 * 1024 ** 2}
+        accept={[...IMAGE_MIME_TYPE, "video/mp4", "video/quicktime", "video/webm"]}
+        maxSize={200 * 1024 ** 2}
         radius="md"
         onReject={() =>
           notifications.show({

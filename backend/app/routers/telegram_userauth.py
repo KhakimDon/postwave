@@ -38,6 +38,10 @@ class PasswordBody(BaseModel):
     password: str
 
 
+class QrPollBody(BaseModel):
+    login_id: str
+
+
 class SendBody(BaseModel):
     text: str = ""
     media_url: str | None = None
@@ -107,6 +111,40 @@ async def login_code(
         return {"status": "password_needed"}
     account = _save_account(db, user, result)
     return {"status": "ok", "account": AccountOut.model_validate(account).model_dump()}
+
+
+@router.post("/login/qr/start")
+async def login_qr_start(user: User = Depends(get_current_user)):
+    login_id = uuid.uuid4().hex
+    try:
+        res = await tu.start_qr_login(login_id)
+    except tu.TelegramUserError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Не удалось создать QR: {e}")
+    return {"login_id": login_id, "url": res["url"]}
+
+
+@router.post("/login/qr/poll")
+async def login_qr_poll(
+    body: QrPollBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        result = await tu.poll_qr_login(body.login_id)
+    except tu.TelegramUserError as e:
+        raise HTTPException(400, str(e))
+    status = result.get("status")
+    if status == "password_needed":
+        return {"status": "password_needed"}
+    if status == "ok":
+        account = _save_account(db, user, result)
+        return {
+            "status": "ok",
+            "account": AccountOut.model_validate(account).model_dump(),
+        }
+    return {"status": "pending", "url": result.get("url")}
 
 
 @router.post("/login/password")
@@ -199,6 +237,45 @@ async def profile(
         return await tu.get_profile(session, dialog_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"Ошибка профиля: {e}")
+
+
+class ContactBody(BaseModel):
+    first_name: str
+    last_name: str = ""
+    phone: str = ""
+
+
+@router.put("/{account_id}/contact/{dialog_id}")
+async def save_contact(
+    account_id: int,
+    dialog_id: int,
+    body: ContactBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not body.first_name.strip():
+        raise HTTPException(400, "Имя не может быть пустым")
+    session = _session_of(db, user, account_id)
+    try:
+        return await tu.save_contact(
+            session, dialog_id, body.first_name, body.last_name, body.phone
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Не удалось сохранить контакт: {e}")
+
+
+@router.delete("/{account_id}/contact/{dialog_id}")
+async def delete_contact(
+    account_id: int,
+    dialog_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = _session_of(db, user, account_id)
+    try:
+        return await tu.delete_contact(session, dialog_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Не удалось удалить контакт: {e}")
 
 
 @router.get("/{account_id}/profile/{dialog_id}/photo/{index}")

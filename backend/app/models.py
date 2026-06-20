@@ -112,6 +112,23 @@ class KanbanBoard(Base):
     )
 
 
+class IgMessage(Base):
+    """Сообщение Instagram Direct. Тред определяется по igsid собеседника
+    (Instagram-scoped user id). Входящие приходят вебхуком, исходящие — через
+    Graph API. Имя собеседника подтягиваем из Graph при первой возможности."""
+
+    __tablename__ = "ig_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("social_accounts.id"), index=True)
+    igsid: Mapped[str] = mapped_column(String(64), index=True)  # собеседник
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    out: Mapped[bool] = mapped_column(default=False)  # True — отправили мы
+    mid: Mapped[str | None] = mapped_column(String(255), nullable=True)  # id сообщения IG
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class PostTarget(Base):
     """Один пост может публиковаться сразу в несколько аккаунтов/площадок."""
 

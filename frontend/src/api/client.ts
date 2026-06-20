@@ -1,6 +1,8 @@
 import type {
   Account,
   AccountCreate,
+  IgApiDialog,
+  IgApiMessage,
   KanbanBoard,
   KanbanColumn,
   Post,
@@ -11,8 +13,13 @@ import type {
   TgStatus,
 } from "./types";
 
-const BASE = "/api";
+// База API. В деве пусто → "/api" (через прокси Vite). В проде задаётся через
+// VITE_API_BASE (напр. https://<ngrok-домен>/api), т.к. фронт и бэкенд на разных хостах.
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 const TOKEN_KEY = "postwave_token";
+
+// ngrok-free показывает HTML-предупреждение на запросах — этот заголовок его пропускает.
+const NGROK_HEADER = { "ngrok-skip-browser-warning": "true" };
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -37,6 +44,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...NGROK_HEADER,
       ...authHeaders(),
       ...(init?.headers as Record<string, string>),
     },
@@ -95,7 +103,7 @@ export const api = {
     const res = await fetch(`${BASE}/uploads`, {
       method: "POST",
       body: form,
-      headers: authHeaders(),
+      headers: { ...NGROK_HEADER, ...authHeaders() },
     });
     if (!res.ok) {
       let detail = res.statusText;
@@ -139,22 +147,45 @@ export const api = {
       "/telegram/user/login/password",
       { method: "POST", body: JSON.stringify({ login_id, password }) }
     ),
+  tgUserLoginQrStart: () =>
+    request<{ login_id: string; url: string }>(
+      "/telegram/user/login/qr/start",
+      { method: "POST", body: "{}" }
+    ),
+  tgUserLoginQrPoll: (login_id: string) =>
+    request<{ status: string; url?: string; account?: Account }>(
+      "/telegram/user/login/qr/poll",
+      { method: "POST", body: JSON.stringify({ login_id }) }
+    ),
   tgUserDialogs: (accountId: number, limit = 50, offset = 0) =>
     request<TgDialog[]>(
       `/telegram/user/${accountId}/dialogs?limit=${limit}&offset=${offset}`
     ),
   tgUserAvatarUrl: (accountId: number, dialogId: number) =>
-    `/api/telegram/user/${accountId}/avatar/${dialogId}?token=${
+    `${BASE}/telegram/user/${accountId}/avatar/${dialogId}?token=${
       tokenStore.get() ?? ""
     }`,
   tgUserStreamUrl: (accountId: number) =>
-    `/api/telegram/user/${accountId}/stream?token=${tokenStore.get() ?? ""}`,
+    `${BASE}/telegram/user/${accountId}/stream?token=${tokenStore.get() ?? ""}`,
   tgUserPresence: (accountId: number, dialogId: number) =>
     request<TgStatus>(`/telegram/user/${accountId}/dialogs/${dialogId}/status`),
   tgUserProfile: (accountId: number, dialogId: number) =>
     request<TgProfile>(`/telegram/user/${accountId}/profile/${dialogId}`),
+  tgUserSaveContact: (
+    accountId: number,
+    dialogId: number,
+    body: { first_name: string; last_name: string; phone: string }
+  ) =>
+    request<TgProfile>(`/telegram/user/${accountId}/contact/${dialogId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  tgUserDeleteContact: (accountId: number, dialogId: number) =>
+    request<TgProfile>(`/telegram/user/${accountId}/contact/${dialogId}`, {
+      method: "DELETE",
+    }),
   tgUserProfilePhotoUrl: (accountId: number, dialogId: number, index: number) =>
-    `/api/telegram/user/${accountId}/profile/${dialogId}/photo/${index}?token=${
+    `${BASE}/telegram/user/${accountId}/profile/${dialogId}/photo/${index}?token=${
       tokenStore.get() ?? ""
     }`,
   tgUserMessages: (accountId: number, dialogId: number) =>
@@ -173,7 +204,7 @@ export const api = {
       }
     ),
   tgUserMediaUrl: (accountId: number, dialogId: number, msgId: number) =>
-    `/api/telegram/user/${accountId}/media/${dialogId}/${msgId}?token=${
+    `${BASE}/telegram/user/${accountId}/media/${dialogId}/${msgId}?token=${
       tokenStore.get() ?? ""
     }`,
   // CRM-канбан (доска инбокса, общая для всех устройств)
@@ -211,12 +242,43 @@ export const api = {
       },
     ),
 
+  // Instagram Direct (реальный инбокс)
+  igDialogs: (accountId: number) =>
+    request<IgApiDialog[]>(`/instagram/${accountId}/dialogs`),
+  igMessages: (accountId: number, igsid: string) =>
+    request<IgApiMessage[]>(
+      `/instagram/${accountId}/dialogs/${encodeURIComponent(igsid)}/messages`
+    ),
+  igSend: (accountId: number, igsid: string, text: string) =>
+    request<{ id: number }>(
+      `/instagram/${accountId}/dialogs/${encodeURIComponent(igsid)}/send`,
+      { method: "POST", body: JSON.stringify({ text }) }
+    ),
+
   instagramOAuthStart: () =>
     request<{ url: string }>("/instagram/oauth/start"),
   instagramOAuthExchange: (code: string) =>
     request<{ status: string; username: string }>(
       `/instagram/oauth/exchange?code=${encodeURIComponent(code)}`
     ),
+
+  // стянуть карточку товара по ссылке (Uzum/Wildberries/Ozon и др.)
+  scrapeCard: (url: string) =>
+    request<{ title: string; description: string; images: string[] }>("/scrape", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  // AI-описание товара (Gemini): по ссылке / по фото / по тексту, на выбранных языках
+  aiDescribe: (body: {
+    url?: string;
+    image_url?: string;
+    text?: string;
+    languages?: string[];
+  }) =>
+    request<{ caption: string }>("/ai/describe", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // posts
   listPosts: () => request<Post[]>("/posts"),

@@ -38,13 +38,6 @@ const STATUS_COLOR: Record<PostStatus, string> = {
   failed: "var(--mantine-color-red-5)",
 };
 
-const STATUS_BADGE: Record<PostStatus, string> = {
-  draft: "gray",
-  scheduled: "blue",
-  publishing: "yellow",
-  published: "teal",
-  failed: "red",
-};
 
 type View = "month" | "week";
 
@@ -321,11 +314,11 @@ export function Calendar({ embedded }: { embedded?: boolean } = {}) {
       ) : (
         <ScrollArea>
           <Box
-            miw={760}
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
+              gridTemplateColumns: "repeat(7, 200px)",
               gap: 8,
+              width: "fit-content",
             }}
           >
             {weekDays.map((day) => {
@@ -426,7 +419,11 @@ function dayCellStyle(
         ? "var(--accent-border)"
         : "var(--border-1)"
     }`,
-    background: isOver ? "var(--accent-soft)" : "var(--surface-1)",
+    background: isOver
+      ? "var(--accent-soft)"
+      : isToday
+      ? "linear-gradient(160deg, rgba(138,87,251,0.20), rgba(74,163,255,0.13))"
+      : "var(--surface-1)",
     backdropFilter: "blur(14px)",
     WebkitBackdropFilter: "blur(14px)",
     boxShadow: isOver
@@ -561,7 +558,7 @@ function PostChip({
     );
   }
 
-  // ===== Крупная карточка (неделя) =====
+  // ===== Карточка недельного вида — компактная, выровненная =====
   return (
     <Box
       className="pw-chip"
@@ -570,34 +567,34 @@ function PostChip({
       onDragEnd={onDragEnd}
       style={{
         position: "relative",
-        borderRadius: 14,
+        borderRadius: 12,
         background: "var(--surface-2)",
         border: "1px solid var(--border-1)",
         borderLeft: `3px solid ${STATUS_COLOR[post.status]}`,
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
-        padding: 9,
+        padding: 8,
         cursor: draggable ? "grab" : "default",
         opacity: dragging ? 0.4 : 1,
         boxShadow: dragging
           ? "none"
-          : `0 4px 16px -8px rgba(0,0,0,0.45), -8px 0 20px -14px ${STATUS_COLOR[post.status]}`,
+          : "0 3px 12px -7px rgba(0,0,0,0.45)",
         transition: "transform 160ms ease, background 160ms ease, box-shadow 160ms ease",
       }}
     >
-      <Group gap={9} wrap="nowrap" align="flex-start">
+      <Group gap={8} wrap="nowrap" align="flex-start">
         {thumb ? (
           <img
             src={thumb}
             alt=""
-            style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
+            style={{ width: 40, height: 40, borderRadius: 9, objectFit: "cover", flexShrink: 0 }}
           />
         ) : (
           <Box
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 10,
+              width: 40,
+              height: 40,
+              borderRadius: 9,
               flexShrink: 0,
               display: "flex",
               alignItems: "center",
@@ -606,44 +603,47 @@ function PostChip({
               color: "var(--mantine-color-dimmed)",
             }}
           >
-            {hasIg ? <IconBrandInstagram size={20} /> : <IconBrandTelegram size={20} />}
+            {hasIg ? <IconBrandInstagram size={18} /> : <IconBrandTelegram size={18} />}
           </Box>
         )}
+
         <Box style={{ flex: 1, minWidth: 0 }}>
-          <Group justify="space-between" wrap="nowrap" gap={4} mb={3}>
-            <Group gap={4} wrap="nowrap">
-              {hasTg && <IconBrandTelegram size={13} color="#2aabee" />}
-              {hasIg && <IconBrandInstagram size={13} color="#d62976" />}
+          {/* мета-строка: статус-точка · время · платформы — справа хват/замок */}
+          <Group justify="space-between" wrap="nowrap" gap={6} mb={4}>
+            <Group gap={5} wrap="nowrap" style={{ minWidth: 0 }}>
+              <Box
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: STATUS_COLOR[post.status],
+                  flexShrink: 0,
+                }}
+              />
+              {time && (
+                <Text fz={11} fw={800} c="dimmed" style={{ letterSpacing: 0.2 }}>
+                  {time}
+                </Text>
+              )}
+              {hasTg && <IconBrandTelegram size={12} color="#2aabee" style={{ flexShrink: 0 }} />}
+              {hasIg && <IconBrandInstagram size={12} color="#d62976" style={{ flexShrink: 0 }} />}
             </Group>
-            {time && (
-              <Text fz={11} fw={800} c="dimmed">
-                {time}
-              </Text>
+            {draggable ? (
+              <IconGripVertical
+                size={13}
+                style={{ color: "var(--mantine-color-dimmed)", cursor: "grab", flexShrink: 0 }}
+              />
+            ) : (
+              <Tooltip label={t("calendar.cantMovePublished")} withArrow>
+                <IconLock size={12} style={{ color: "var(--mantine-color-dimmed)", flexShrink: 0 }} />
+              </Tooltip>
             )}
           </Group>
-          <Text fz={12} lineClamp={2} lh={1.3}>
+
+          <Text fz={12} lineClamp={2} lh={1.3} c={post.content ? undefined : "dimmed"}>
             {post.content || t("common.noText")}
           </Text>
         </Box>
-      </Group>
-
-      <Group justify="space-between" wrap="nowrap" mt={8}>
-        <Badge
-          size="xs"
-          variant="light"
-          radius="sm"
-          color={STATUS_BADGE[post.status]}
-          leftSection={published ? <IconCircleCheck size={11} /> : undefined}
-        >
-          {t(`status.${post.status}`)}
-        </Badge>
-        {draggable ? (
-          <IconGripVertical size={14} style={{ color: "var(--mantine-color-dimmed)", cursor: "grab" }} />
-        ) : (
-          <Tooltip label={t("calendar.cantMovePublished")} withArrow>
-            <IconLock size={13} style={{ color: "var(--mantine-color-dimmed)" }} />
-          </Tooltip>
-        )}
       </Group>
     </Box>
   );

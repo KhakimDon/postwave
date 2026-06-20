@@ -45,6 +45,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Platform } from "../api/types";
 import { PageHeader, EmptyState } from "../components/ui";
+import { TelegramUserLogin } from "../components/TelegramUserLogin";
 
 export function Accounts() {
   const { t } = useTranslation();
@@ -152,7 +153,7 @@ export function Accounts() {
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
           {accounts.map((a) => (
-            <Card key={a.id}>
+            <Card key={a.id} className="pw-liquid-card">
               <Group justify="space-between" wrap="nowrap">
                 <Group wrap="nowrap">
                   <ThemeIcon
@@ -275,6 +276,15 @@ function ConnectModal({
       <Stack>
         <PlatformPicker value={platform} onChange={switchPlatform} />
 
+        {platform === "telegram_user" ? (
+          <TelegramUserLogin
+            onConnected={() => {
+              onConnected();
+              onClose();
+            }}
+          />
+        ) : (
+          <>
         <TextInput
           label={t("accounts.nameLabel")}
           placeholder={platform === "instagram" ? t("accounts.namePhIg") : t("accounts.namePhChannel")}
@@ -377,6 +387,8 @@ function ConnectModal({
             {t("common.connect")}
           </Button>
         </Group>
+          </>
+        )}
       </Stack>
     </Modal>
   );
@@ -392,11 +404,12 @@ function PlatformPicker({
   const { t } = useTranslation();
   const options: { value: Platform; label: string; logo: string }[] = [
     { value: "telegram_bot", label: t("accounts.platformTelegram"), logo: TELEGRAM_LOGO },
+    { value: "telegram_user", label: t("accounts.platformTelegramUser"), logo: TELEGRAM_LOGO },
     { value: "instagram", label: t("accounts.platformInstagram"), logo: INSTAGRAM_LOGO },
   ];
 
   return (
-    <SimpleGrid cols={2} spacing="sm">
+    <SimpleGrid cols={3} spacing="sm">
       {options.map((opt) => {
         const selected = value === opt.value;
         return (
@@ -409,13 +422,9 @@ function PlatformPicker({
               padding: "var(--mantine-spacing-md)",
               borderRadius: "var(--mantine-radius-lg)",
               border: `2px solid ${
-                selected
-                  ? "var(--mantine-color-brand-5)"
-                  : "var(--mantine-color-gray-3)"
+                selected ? "var(--accent-border)" : "var(--border-1)"
               }`,
-              background: selected
-                ? "var(--mantine-color-brand-0)"
-                : "var(--mantine-color-body)",
+              background: selected ? "var(--accent-soft)" : "var(--surface-1)",
               transition: "border-color 150ms ease, background 150ms ease",
             }}
           >

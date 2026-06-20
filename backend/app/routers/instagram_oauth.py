@@ -10,6 +10,7 @@
      -> узнаём username -> сохраняем SocialAccount.
 """
 
+import logging
 from urllib.parse import urlencode
 
 import httpx
@@ -24,11 +25,16 @@ from ..models import Platform, SocialAccount, User
 from ..services.crypto import encrypt_credentials
 
 router = APIRouter(prefix="/api/instagram/oauth", tags=["instagram-oauth"])
+log = logging.getLogger("instagram.oauth")
 
 AUTH_URL = "https://www.instagram.com/oauth/authorize"
 TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 GRAPH = "https://graph.instagram.com"
-SCOPES = ["instagram_business_basic", "instagram_business_content_publish"]
+SCOPES = [
+    "instagram_business_basic",
+    "instagram_business_content_publish",
+    "instagram_business_manage_messages",
+]
 
 settings = get_settings()
 
@@ -109,6 +115,19 @@ def _complete_oauth(code: str, db: Session, user: User) -> str:
     username = me.get("username", "Instagram")
     if not ig_user_id:
         raise RuntimeError("no ig_user_id")
+
+    # 3.5) подписываем приложение на сообщения этого аккаунта — иначе вебхук
+    # не доставляет входящие (одной подписки приложения на поле в дашборде мало).
+    try:
+        sub = httpx.post(
+            f"{GRAPH}/{ig_user_id}/subscribed_apps",
+            params={"subscribed_fields": "messages", "access_token": access_token},
+            timeout=30,
+        )
+        if sub.status_code >= 400:
+            log.warning("IG subscribed_apps не удалось: %s", sub.text)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("IG subscribed_apps ошибка: %s", exc)
 
     # 4) сохраняем (токен шифруется)
     creds = {"ig_user_id": ig_user_id, "access_token": access_token}

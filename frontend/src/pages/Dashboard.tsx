@@ -21,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import type { Account, Post } from "../api/types";
+import { CountUp } from "../components/CountUp";
 import { PageHeader } from "../components/ui";
 import { useComposer } from "../composer";
 
@@ -84,7 +85,7 @@ export function Dashboard() {
                   {s.label}
                 </Text>
                 <Text fz={rem(30)} fw={800} lh={1.1} mt={4}>
-                  {s.value}
+                  <CountUp value={s.value} />
                 </Text>
               </Box>
               <ThemeIcon size={42} radius="md" variant="light" color={s.color}>

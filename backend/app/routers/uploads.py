@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 
+from ..config import get_settings
 from ..deps import get_current_user
 from ..models import User
 
@@ -17,8 +18,10 @@ ALLOWED = {
     "image/webp": ".webp",
     "image/gif": ".gif",
     "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
 }
-MAX_BYTES = 25 * 1024 * 1024  # 25 МБ
+MAX_BYTES = 200 * 1024 * 1024  # 200 МБ — не режем качество видео/фото
 
 
 @router.post("")
@@ -39,7 +42,10 @@ async def upload_file(
     name = f"{uuid.uuid4().hex}{ALLOWED[file.content_type]}"
     (UPLOAD_DIR / name).write_bytes(data)
 
-    base = str(request.base_url).rstrip("/")
+    # За ngrok/прокси TLS терминируется → request.base_url может прийти как http,
+    # что ломает картинки на https-странице (mixed content). Поэтому предпочитаем
+    # явный PUBLIC_BASE_URL (https), если задан.
+    base = (get_settings().public_base_url or str(request.base_url)).rstrip("/")
     return {
         "url": f"{base}/media/{name}",
         "filename": name,

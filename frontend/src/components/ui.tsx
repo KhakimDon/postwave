@@ -2,18 +2,47 @@ import { Badge, Box, Group, Stack, Text, ThemeIcon } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { PostStatus } from "../api/types";
 
-const STATUS_COLOR: Record<PostStatus, string> = {
-  draft: "gray",
-  scheduled: "blue",
-  publishing: "yellow",
-  published: "teal",
-  failed: "red",
+// Яркие акцентные цвета статуса — читаются поверх любого (даже светлого) медиа.
+const STATUS_HEX: Record<PostStatus, string> = {
+  draft: "#cdd2da",
+  scheduled: "#74a4ff",
+  publishing: "#ffd43b",
+  published: "#2ce0c0",
+  failed: "#ff6b81",
 };
 
 export function StatusBadge({ status }: { status: PostStatus }) {
   const { t } = useTranslation();
+  const hex = STATUS_HEX[status];
   return (
-    <Badge color={STATUS_COLOR[status]} variant="light" radius="sm">
+    <Badge
+      variant="filled"
+      radius="sm"
+      leftSection={
+        <Box
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: hex,
+            boxShadow: `0 0 6px ${hex}`,
+          }}
+        />
+      }
+      styles={{
+        root: {
+          // тёмная «матовая» подложка с блюром — текст всегда контрастный
+          background: "rgba(13,15,20,0.60)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          border: `1px solid ${hex}66`,
+          color: hex,
+          boxShadow: "0 2px 10px -3px rgba(0,0,0,0.55)",
+          textTransform: "none",
+          fontWeight: 700,
+        },
+      }}
+    >
       {t(`status.${status}`)}
     </Badge>
   );

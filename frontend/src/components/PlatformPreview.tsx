@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Text, Image, Avatar, Box, Group, Stack } from "@mantine/core";
 import {
   IconBrandInstagram,
@@ -11,6 +12,9 @@ import {
   IconMusic,
   IconPlayerPlayFilled,
   IconMapPin,
+  IconChevronLeft,
+  IconChevronRight,
+  IconVideo,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import type { IgPostType, Platform } from "../api/types";
@@ -127,28 +131,12 @@ function TelegramPreview({
             width: "100%",
           }}
         >
-          {hasMedia && (
-            <Box style={{ position: "relative" }}>
-              <MediaView item={media[0]} h={media.length > 1 ? 150 : 190} />
-              {media.length > 1 && (
-                <Box
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    right: 8,
-                    background: "rgba(0,0,0,.6)",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                  }}
-                >
-                  1/{media.length}
-                </Box>
-              )}
-            </Box>
-          )}
+          {hasMedia &&
+            (media.length > 1 ? (
+              <TgAlbum media={media} />
+            ) : (
+              <MediaView item={media[0]} h={190} />
+            ))}
 
           <Box px={12} pt={hasMedia ? 8 : 10} pb={6}>
             <Text fz="sm" fw={700} c="#168acd" mb={2}>
@@ -172,6 +160,82 @@ function TelegramPreview({
           </Box>
         </Box>
       </Group>
+    </Box>
+  );
+}
+
+/** Альбом Telegram: несколько медиа сеткой (приближение к раскладке TG). */
+function TgAlbum({ media }: { media: PreviewMedia[] }) {
+  const MAX = 10;
+  const items = media.slice(0, MAX);
+  const extra = media.length - items.length;
+  const n = items.length;
+
+  let cols = "1fr 1fr";
+  let rows: string | undefined;
+  const spanFirst = n === 3; // 3 фото: верхняя на всю ширину, две снизу
+  if (n === 2) rows = "170px";
+  else if (n === 3) rows = "150px 110px";
+  else if (n === 4) rows = "120px 120px";
+  else cols = "1fr 1fr 1fr"; // 5+ — три колонки, квадраты
+
+  return (
+    <Box
+      style={{
+        display: "grid",
+        gap: 2,
+        gridTemplateColumns: cols,
+        gridTemplateRows: rows,
+        gridAutoRows: n >= 5 ? "104px" : undefined,
+      }}
+    >
+      {items.map((m, i) => {
+        const last = i === n - 1;
+        return (
+          <Box
+            key={i}
+            style={{
+              position: "relative",
+              gridColumn: spanFirst && i === 0 ? "1 / -1" : undefined,
+              overflow: "hidden",
+            }}
+          >
+            <MediaView item={m} h="100%" />
+            {m.isVideo && (
+              <Box
+                style={{
+                  position: "absolute",
+                  top: 6,
+                  left: 6,
+                  background: "rgba(0,0,0,.55)",
+                  borderRadius: 6,
+                  padding: 2,
+                  display: "flex",
+                }}
+              >
+                <IconVideo size={13} color="#fff" />
+              </Box>
+            )}
+            {last && extra > 0 && (
+              <Box
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(0,0,0,.5)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                  fontWeight: 700,
+                }}
+              >
+                +{extra}
+              </Box>
+            )}
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -212,13 +276,7 @@ function InstagramPreview({
   if (postType === "reels")
     return <ReelsPreview content={content} media={media} user={user} />;
   return (
-    <FeedPreview
-      content={content}
-      media={media}
-      user={user}
-      carousel={postType === "carousel"}
-      location={location}
-    />
+    <FeedPreview content={content} media={media} user={user} location={location} />
   );
 }
 
@@ -242,20 +300,59 @@ function MediaPlaceholder({ h, text }: { h: number; text: string }) {
   );
 }
 
+function CarouselArrow({
+  side,
+  onClick,
+}: {
+  side: "left" | "right";
+  onClick: () => void;
+}) {
+  const Icon = side === "left" ? IconChevronLeft : IconChevronRight;
+  return (
+    <Box
+      onClick={onClick}
+      style={{
+        position: "absolute",
+        top: "50%",
+        transform: "translateY(-50%)",
+        ...(side === "left" ? { left: 8 } : { right: 8 }),
+        width: 26,
+        height: 26,
+        borderRadius: "50%",
+        background: "rgba(255,255,255,.85)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        boxShadow: "0 1px 4px rgba(0,0,0,.3)",
+      }}
+    >
+      <Icon size={18} color="#262626" />
+    </Box>
+  );
+}
+
 function FeedPreview({
   content,
   media,
   user,
-  carousel,
   location,
 }: {
   content: string;
   media: PreviewMedia[];
   user: string;
-  carousel: boolean;
   location?: string;
 }) {
   const { t } = useTranslation();
+  const n = media.length;
+  const multi = n > 1;
+  const [idx, setIdx] = useState(0);
+  // если медиа поменялись — не выходим за границы
+  useEffect(() => {
+    setIdx((i) => Math.min(i, Math.max(0, n - 1)));
+  }, [n]);
+  const cur = media[Math.min(idx, Math.max(0, n - 1))];
+
   return (
     <Box
       style={{
@@ -284,11 +381,12 @@ function FeedPreview({
         <IconDots size={18} color="#262626" />
       </Group>
 
-      {media[0] ? (
+      {cur ? (
         <Box style={{ position: "relative" }}>
-          <MediaView item={media[0]} h={300} />
-          {carousel && (
+          <MediaView item={cur} h={300} />
+          {multi && (
             <>
+              {/* счётчик */}
               <Box
                 style={{
                   position: "absolute",
@@ -302,21 +400,31 @@ function FeedPreview({
                   borderRadius: 10,
                 }}
               >
-                1/{Math.max(media.length, 2)}
+                {idx + 1}/{n}
               </Box>
+              {/* стрелки */}
+              {idx > 0 && (
+                <CarouselArrow side="left" onClick={() => setIdx((i) => i - 1)} />
+              )}
+              {idx < n - 1 && (
+                <CarouselArrow side="right" onClick={() => setIdx((i) => i + 1)} />
+              )}
+              {/* точки (кликабельные) */}
               <Group
                 gap={4}
                 justify="center"
                 style={{ position: "absolute", bottom: 10, left: 0, right: 0 }}
               >
-                {Array.from({ length: Math.max(media.length, 2) }).map((_, i) => (
+                {media.map((_, i) => (
                   <Box
                     key={i}
+                    onClick={() => setIdx(i)}
                     style={{
-                      width: 6,
-                      height: 6,
+                      width: i === idx ? 7 : 6,
+                      height: i === idx ? 7 : 6,
                       borderRadius: "50%",
-                      background: i === 0 ? "#3897f0" : "rgba(255,255,255,.7)",
+                      cursor: "pointer",
+                      background: i === idx ? "#3897f0" : "rgba(255,255,255,.7)",
                     }}
                   />
                 ))}

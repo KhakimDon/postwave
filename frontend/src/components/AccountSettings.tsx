@@ -20,6 +20,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   IconBell,
+  IconBrandInstagram,
   IconBrandTelegram,
   IconCheck,
   IconLogout,
@@ -39,22 +40,20 @@ import {
 } from "../notify";
 import { addScript, removeScript, useScripts } from "../scripts";
 
-/** Меню настроек (как в ТГ): список аккаунтов, переключение, отключение, добавление. */
+/** Меню настроек (как в ТГ): список всех подключённых аккаунтов, переключение, отключение. */
 export function AccountSettings({
   opened,
   onClose,
   accounts,
-  currentId,
+  currentIds,
   onSwitch,
-  onAdd,
   onChanged,
 }: {
   opened: boolean;
   onClose: () => void;
   accounts: Account[];
-  currentId: number | null;
-  onSwitch: (id: number) => void;
-  onAdd: () => void;
+  currentIds: number[];
+  onSwitch: (acc: Account) => void;
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
@@ -131,13 +130,23 @@ export function AccountSettings({
             {t("inbox.accountsList")}
           </Text>
           {accounts.map((a) => {
-          const isCurrent = a.id === currentId;
+          const isCurrent = currentIds.includes(a.id);
+          const isIg = a.platform === "instagram";
           return (
             <Paper key={a.id} withBorder radius="md" p="sm">
               <Group justify="space-between" wrap="nowrap">
                 <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-                  <ThemeIcon variant="light" color="blue" radius="xl" size={36}>
-                    <IconBrandTelegram size={18} />
+                  <ThemeIcon
+                    variant="light"
+                    color={isIg ? "pink" : "blue"}
+                    radius="xl"
+                    size={36}
+                  >
+                    {isIg ? (
+                      <IconBrandInstagram size={18} />
+                    ) : (
+                      <IconBrandTelegram size={18} />
+                    )}
                   </ThemeIcon>
                   <Box style={{ minWidth: 0 }}>
                     <Text fw={600} fz="sm" lineClamp={1}>
@@ -160,7 +169,7 @@ export function AccountSettings({
                       size="compact-xs"
                       variant="light"
                       onClick={() => {
-                        onSwitch(a.id);
+                        onSwitch(a);
                         onClose();
                       }}
                     >
@@ -181,16 +190,6 @@ export function AccountSettings({
             </Paper>
           );
         })}
-        <Button
-          variant="light"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => {
-            onClose();
-            onAdd();
-          }}
-        >
-          {t("inbox.addAccount")}
-        </Button>
         </Stack>
 
         {/* ── Правая колонка: быстрые ответы ── */}

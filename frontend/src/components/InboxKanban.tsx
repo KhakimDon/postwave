@@ -14,7 +14,13 @@ import {
   TextInput,
   ActionIcon,
 } from "@mantine/core";
-import { IconPlus, IconTrash, IconGripVertical } from "@tabler/icons-react";
+import {
+  IconPlus,
+  IconTrash,
+  IconGripVertical,
+  IconBrandTelegram,
+  IconBrandInstagram,
+} from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { ChatAvatar } from "./ChatAvatar";
@@ -160,7 +166,7 @@ export function InboxKanban({
                         {col.title}
                       </Text>
                     </Group>
-                    <Badge variant="light" color="gray" size="sm">
+                    <Badge variant="light" color="gray" size="sm" className="pw-col-count">
                       {items.length}
                     </Badge>
                   </Group>
@@ -169,7 +175,11 @@ export function InboxKanban({
                       <KanbanCard
                         key={d.id}
                         dialog={d}
-                        avatarUrl={api.tgUserAvatarUrl(accountId, d.id)}
+                        avatarUrl={
+                          d.network === "instagram"
+                            ? d.avatar_url ?? ""
+                            : api.tgUserAvatarUrl(accountId, d.id)
+                        }
                         accent={col.color}
                         dragging={dragId === d.id}
                         onDragStart={() => setDragId(d.id)}
@@ -249,12 +259,36 @@ function KanbanCard({
           size={14}
           style={{ color: "var(--mantine-color-gray-4)", flexShrink: 0 }}
         />
-        <ChatAvatar
-          src={avatarUrl}
-          name={dialog.name}
-          color={dialog.is_user ? "blue" : "grape"}
-          size={30}
-        />
+        {/* аватар + бейдж соцсети (TG / IG) */}
+        <Box style={{ position: "relative", flexShrink: 0 }}>
+          <ChatAvatar
+            src={avatarUrl}
+            name={dialog.name}
+            color={dialog.network === "instagram" ? "grape" : dialog.is_user ? "blue" : "grape"}
+            size={30}
+          />
+          <Box
+            style={{
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              width: 15,
+              height: 15,
+              borderRadius: "50%",
+              background: "var(--mantine-color-body)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 0 0 1px var(--border-1)",
+            }}
+          >
+            {dialog.network === "instagram" ? (
+              <IconBrandInstagram size={11} color="#E4405F" />
+            ) : (
+              <IconBrandTelegram size={11} color="#229ED9" />
+            )}
+          </Box>
+        </Box>
         <Box style={{ flex: 1, minWidth: 0 }}>
           <Text fw={600} fz="xs" lineClamp={1}>
             {dialog.name || t("inbox.noName")}

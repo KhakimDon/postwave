@@ -21,6 +21,7 @@ import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
+import { PublishProgress } from "./PublishProgress";
 import { useComposer } from "../composer";
 import {
   IconHome,
@@ -185,6 +186,9 @@ export function AppLayout({
           </div>
         </Box>
       </AppShell.Main>
+
+      {/* Плавающий блок прогресса публикации (справа снизу) */}
+      <PublishProgress />
 
       {/* Мобильный нижний таб-бар (стиль X / Instagram) */}
       <Box

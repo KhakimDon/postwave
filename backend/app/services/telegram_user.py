@@ -27,6 +27,10 @@ from telethon.errors import (
     SessionPasswordNeededError,
 )
 from telethon.sessions import StringSession
+from telethon.tl.functions.contacts import (
+    AddContactRequest,
+    DeleteContactsRequest,
+)
 from telethon.tl.functions.messages import GetPeerDialogsRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import (
@@ -180,6 +184,52 @@ async def _finalize(login_id: str) -> dict:
         or str(me.id)
     )
     return {"status": "ok", "session": session_str, "display_name": name}
+
+
+# ---------------- Вход по QR ----------------
+async def start_qr_login(login_id: str) -> dict:
+    """QR-вход: создаём клиент и токен. Возвращает {url} для отрисовки QR.
+    Пользователь сканирует его в Telegram (Настройки → Устройства → Подключить
+    устройство)."""
+    _gc()
+    _require_api()
+    client = _new_client()
+    await client.connect()
+    qr = await client.qr_login()
+    _logins[login_id] = {
+        "client": client,
+        "qr": qr,
+        "expires": time.time() + _LOGIN_TTL,
+    }
+    return {"url": qr.url}
+
+
+async def poll_qr_login(login_id: str) -> dict:
+    """Опрос QR-входа: 'pending' (+обновлённый url) | 'password_needed' | 'ok'."""
+    import datetime as _dt
+
+    data = _logins.get(login_id)
+    if not data or "qr" not in data:
+        raise TelegramUserError("Сессия входа истекла, начните заново.")
+    qr = data["qr"]
+    try:
+        res = await qr.wait(timeout=2)
+        if res:
+            return await _finalize(login_id)
+    except SessionPasswordNeededError:
+        return {"status": "password_needed"}
+    except asyncio.TimeoutError:
+        pass
+    except Exception as e:  # noqa: BLE001
+        raise TelegramUserError(f"Ошибка QR-входа: {e}")
+    # токен живёт ~30 сек — по истечении пересоздаём, чтобы QR обновился
+    try:
+        if qr.expires and qr.expires <= _dt.datetime.now(_dt.timezone.utc):
+            await qr.recreate()
+            data["expires"] = time.time() + _LOGIN_TTL
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": "pending", "url": qr.url}
 
 
 # ---------------- Менеджер соединений ----------------
@@ -456,9 +506,53 @@ async def get_profile(session: str, dialog_id: int) -> dict:
             "phone": getattr(ent, "phone", None),
             "bio": bio,
             "photo_count": count,
+            # поля для управления контактом (только для пользователей)
+            "is_user": isinstance(ent, TLUser),
+            "is_contact": bool(getattr(ent, "contact", False)),
+            "first_name": getattr(ent, "first_name", None),
+            "last_name": getattr(ent, "last_name", None),
         }
 
     return await _run(session, op)
+
+
+async def save_contact(
+    session: str,
+    dialog_id: int,
+    first_name: str,
+    last_name: str = "",
+    phone: str = "",
+) -> dict:
+    """Добавить/обновить контакт собеседника (имя/фамилия/телефон)."""
+
+    async def op(client: TelegramClient):
+        input_user = await client.get_input_entity(dialog_id)
+        await client(
+            AddContactRequest(
+                id=input_user,
+                first_name=(first_name or "").strip(),
+                last_name=(last_name or "").strip(),
+                phone=(phone or "").strip(),
+                add_phone_privacy_exception=False,
+            )
+        )
+        return None
+
+    await _run(session, op)
+    # вернём обновлённый профиль
+    return await get_profile(session, dialog_id)
+
+
+async def delete_contact(session: str, dialog_id: int) -> dict:
+    """Удалить собеседника из контактов."""
+
+    async def op(client: TelegramClient):
+        input_user = await client.get_input_entity(dialog_id)
+        await client(DeleteContactsRequest(id=[input_user]))
+        return None
+
+    await _run(session, op)
+    return await get_profile(session, dialog_id)
 
 
 async def get_status(session: str, dialog_id: int) -> dict:

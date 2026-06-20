@@ -236,6 +236,23 @@ body {
   border-color: var(--glass-border-strong);
   box-shadow: var(--glass-shadow-hover);
 }
+
+/* Liquid-glass карточки (преломление фона через SVG-фильтр #pw-liquid-glass).
+   Прозрачный фон + лёгкий блюр, чтобы был виден liquid-эффект под карточкой. */
+.pw-liquid-card {
+  background: rgba(255, 255, 255, 0.4) !important;
+  -webkit-backdrop-filter: blur(7px) saturate(160%) !important;
+  backdrop-filter: url(#pw-liquid-glass) blur(5px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 18px 50px -22px rgba(31, 38, 99, 0.3),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.55) !important;
+}
+[data-mantine-color-scheme="dark"] .pw-liquid-card {
+  background: rgba(22, 24, 42, 0.36) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 22px 60px -22px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12) !important;
+}
 .glass-modal {
   background: var(--glass-modal-bg) !important;
   backdrop-filter: blur(16px) saturate(150%);
@@ -243,10 +260,324 @@ body {
   border: 1px solid var(--glass-border-strong);
   box-shadow: 0 30px 90px -24px rgba(0, 0, 0, 0.55);
 }
-/* Шапка модалки/дровера — прозрачная (без второго слоя блюра/тинта) */
+/* Шапка модалки/дровера — матовое стекло (тинт + блюр), липкая сверху,
+   чтобы при скролле контент уходил под неё */
 .glass-modal-header {
-  background: transparent !important;
-  border-bottom: 1px solid var(--border-1);
+  background: var(--app-bg-overlay) !important;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 1px solid var(--glass-border);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+/* Отступ между шапкой модалки/дровера и контентом, чтобы не прилипало */
+.mantine-Modal-body,
+.mantine-Drawer-body {
+  padding-top: 16px;
+}
+
+/* ===================== Переключатель соцсетей (инбокс) ===================== */
+/* Popup — настоящий frosted glass: низкая непрозрачность фона + сильный блюр,
+   чтобы сквозь него просвечивал размытый контент. !important — перебить дефолт Mantine. */
+/* .pw-social-pop.pw-social-pop — двойной класс поднимает специфичность выше
+   глобального правила [data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
+   иначе оно перебивает фон на непрозрачный и стекло пропадает. */
+.pw-social-pop.pw-social-pop {
+  padding: 5px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.4) !important;
+  /* Safari/Firefox: только лёгкий блюр (url-фильтры в backdrop там не работают) */
+  -webkit-backdrop-filter: blur(5px) saturate(180%) !important;
+  /* Chromium: liquid-glass — преломление фона + совсем немного блюра */
+  backdrop-filter: url(#pw-liquid-glass) blur(4px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 24px 60px -20px rgba(31, 38, 99, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.7) !important;
+}
+[data-mantine-color-scheme="dark"] .pw-social-pop.pw-social-pop {
+  background: rgba(22, 24, 42, 0.34) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 26px 70px -20px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Стеклянная модалка (профиль): liquid-glass на контенте и хедере.
+   Классы вешаются прямо на элементы через classNames — высокая специфичность,
+   чтобы перебить дефолтный непрозрачный фон Mantine. */
+.pw-liquid-modal-content.pw-liquid-modal-content {
+  background: rgba(255, 255, 255, 0.5) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  backdrop-filter: url(#pw-liquid-glass) blur(13px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 30px 80px -24px rgba(31, 38, 99, 0.32),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.6) !important;
+}
+.pw-liquid-modal-header.pw-liquid-modal-header {
+  background: rgba(255, 255, 255, 0.28) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  backdrop-filter: url(#pw-liquid-glass) blur(14px) saturate(160%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+[data-mantine-color-scheme="dark"] .pw-liquid-modal-content.pw-liquid-modal-content {
+  background: rgba(20, 22, 38, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 30px 90px -24px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12) !important;
+}
+[data-mantine-color-scheme="dark"] .pw-liquid-modal-header.pw-liquid-modal-header {
+  background: rgba(20, 22, 38, 0.34) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Триггер: стеклянная кнопка с лого активной сети */
+.pw-social-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* ширина = ширине popup: ячейка лого 34 + паддинги дропдауна 5×2 = 44 */
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease,
+    border-color 160ms ease;
+}
+.pw-social-trigger:hover {
+  background: var(--surface-hover);
+  border-color: var(--glass-border-strong);
+}
+.pw-social-trigger[data-opened] {
+  border-color: var(--accent-border);
+}
+
+/* Пункт выпадашки: только лого, без карточки/текста */
+@keyframes pwPopItem {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.pw-social-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  animation: pwPopItem 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 150ms ease, background 150ms ease, opacity 150ms ease;
+  opacity: 0.65;
+}
+.pw-social-item:hover {
+  transform: scale(1.14);
+  opacity: 1;
+}
+.pw-social-item[data-active] {
+  opacity: 1;
+}
+
+/* ===== Переключатель аккаунтов (кнопка с именем + стеклянный popup) ===== */
+.pw-acc-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  max-width: 210px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.pw-acc-trigger:hover {
+  background: var(--surface-hover);
+  border-color: var(--glass-border-strong);
+}
+.pw-acc-trigger[data-opened] {
+  border-color: var(--accent-border);
+}
+.pw-acc-trigger-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mantine-color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-acc-caret {
+  color: var(--mantine-color-dimmed);
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+.pw-acc-trigger[data-opened] .pw-acc-caret {
+  transform: rotate(180deg);
+}
+/* Popup — тот же liquid-glass, что у переключателя соцсетей */
+.pw-acc-pop.pw-acc-pop {
+  padding: 6px !important;
+  border-radius: 16px !important;
+  min-width: 210px;
+  background: rgba(255, 255, 255, 0.45) !important;
+  -webkit-backdrop-filter: blur(5px) saturate(180%) !important;
+  backdrop-filter: url(#pw-liquid-glass) blur(4px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 24px 60px -20px rgba(31, 38, 99, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.7) !important;
+}
+[data-mantine-color-scheme="dark"] .pw-acc-pop.pw-acc-pop {
+  background: rgba(22, 24, 42, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 26px 70px -20px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14) !important;
+}
+.pw-acc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 11px;
+  animation: pwPopItem 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: background 150ms ease;
+}
+.pw-acc-item:hover {
+  background: var(--surface-hover);
+}
+.pw-acc-item[data-active] {
+  background: var(--accent-soft);
+}
+.pw-acc-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+.pw-acc-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mantine-color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-acc-check {
+  color: var(--mantine-primary-color-filled);
+  flex-shrink: 0;
+}
+.pw-acc-add .pw-acc-chip {
+  color: var(--mantine-color-dimmed);
+}
+/* номер очереди выбора языка (1,2,3) в AI-попапе */
+.pw-lang-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--mantine-primary-color-filled);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+@keyframes pwSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Тултипы — плотный читаемый фон (не прозрачный) */
+.mantine-Tooltip-tooltip {
+  background: var(--mantine-color-dark-7) !important;
+  color: #fff !important;
+  font-weight: 500;
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.5);
+}
+
+/* Stepper мастера: текущий шаг — залитый цветом кружок, компактные подписи */
+.pw-stepper .mantine-Stepper-stepIcon[data-progress] {
+  background-color: var(--mantine-primary-color-filled) !important;
+  border-color: var(--mantine-primary-color-filled) !important;
+  color: #fff !important;
+}
+.pw-stepper .mantine-Stepper-stepLabel {
+  font-size: 11px;
+  font-weight: 600;
+}
+.pw-stepper .mantine-Stepper-separator {
+  margin-left: 6px;
+  margin-right: 6px;
+}
+.pw-stepper .mantine-Stepper-stepBody {
+  margin-left: 6px;
+}
+
+/* Мягкая AI-кнопка в инпуте подписи */
+.pw-ai-btn {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #c13584 18%, transparent),
+    color-mix(in srgb, #7b52f9 18%, transparent)
+  ) !important;
+  box-shadow: 0 2px 8px -3px rgba(123, 82, 249, 0.45);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.pw-ai-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px -4px rgba(123, 82, 249, 0.55);
+}
+.pw-ai-btn:disabled,
+.pw-ai-btn[data-disabled] {
+  background: var(--surface-2) !important;
+  box-shadow: none;
+  transform: none;
+  opacity: 0.55;
+}
+/* во время генерации (loading) — сохраняем градиент и спиннер видимым */
+.pw-ai-btn[data-loading] {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #c13584 22%, transparent),
+    color-mix(in srgb, #7b52f9 22%, transparent)
+  ) !important;
+  opacity: 1;
+  transform: none;
+}
+
+/* Градиентное кольцо вокруг аватара (Instagram-стиль) */
+.pw-ig-ring {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+  flex-shrink: 0;
+}
+
+/* Бейдж количества чатов в колонке канбана — в тёмной теме делаем светлым */
+[data-mantine-color-scheme="dark"] .pw-col-count {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 /* ===================== Mantine: остекление поверхностей ===================== */

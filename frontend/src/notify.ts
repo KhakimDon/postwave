@@ -86,13 +86,22 @@ export function notifyMessage(opts: {
   dialogId: number;
   name: string;
   text: string;
+  // Аватар уведомления. Не задан → берём Telegram-аватар по умолчанию.
+  // null → без аватара (например, Instagram, где аватара нет).
+  avatarUrl?: string | null;
 }): void {
   if (!notifyEnabled()) return;
   if (isMuted(opts.accountId, opts.dialogId)) return;
 
+  // undefined → Telegram (как раньше); строка/null → используем как есть
+  const iconSrc =
+    opts.avatarUrl !== undefined
+      ? opts.avatarUrl
+      : api.tgUserAvatarUrl(opts.accountId, opts.dialogId);
+
   playPing();
   notifications.show({
-    title: opts.name || "Telegram",
+    title: opts.name || "Сообщение",
     message: createElement(
       "span",
       {
@@ -108,16 +117,18 @@ export function notifyMessage(opts: {
     ),
     color: "brand",
     autoClose: 4500,
-    icon: createElement("img", {
-      src: api.tgUserAvatarUrl(opts.accountId, opts.dialogId),
-      style: {
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        objectFit: "cover",
-        display: "block",
-      },
-    }),
+    icon: iconSrc
+      ? createElement("img", {
+          src: iconSrc,
+          style: {
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            objectFit: "cover",
+            display: "block",
+          },
+        })
+      : undefined,
     styles: { icon: { background: "transparent", width: 28, height: 28 } },
   });
 
