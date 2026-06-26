@@ -9,14 +9,25 @@
 """
 
 import time
+from pathlib import Path
 
 import httpx
+from PIL import Image, ImageOps
 
 from ..config import get_settings
 
 GRAPH = "https://graph.instagram.com/v21.0"
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 settings = get_settings()
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
+# Нативная ширина ленты Instagram. Если отдать картинку больше — Instagram
+# жёстко её пережимает (потеря качества). Поэтому сами ресайзим до 1080 с
+# качественным ресемплером (Lanczos) и сохраняем JPEG q92 — Instagram почти
+# не перекодирует, качество остаётся высоким. Заодно конвертим webp/png → jpeg
+# (Graph API стабильно принимает именно JPEG).
+IG_FEED_WIDTH = 1080
+IG_JPEG_QUALITY = 92
 
 
 class InstagramError(Exception):
@@ -33,6 +44,52 @@ def _public(url: str) -> str:
 
 def _is_video(url: str) -> bool:
     return url.lower().split("?")[0].endswith(VIDEO_EXTS)
+
+
+def _optimize_image(url: str) -> str:
+    """Готовим изображение под Instagram: sRGB JPEG, ширина ≤ 1080, q92.
+    Возвращает публичный URL оптимизированной копии (или исходный при сбое)."""
+    if _is_video(url) or "/media/" not in url:
+        return _public(url)
+    name = url.split("/media/", 1)[1].split("?")[0]
+    src = UPLOAD_DIR / name
+    if not src.exists():
+        return _public(url)
+    out_name = f"{src.stem}_ig.jpg"
+    out_path = UPLOAD_DIR / out_name
+    try:
+        if not out_path.exists():  # кэшируем — не пересобираем при ретраях
+            img = Image.open(src)
+            img = ImageOps.exif_transpose(img)  # учитываем EXIF-ориентацию
+            # прозрачность кладём на белый фон, иначе всё → RGB
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                rgba = img.convert("RGBA")
+                bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                bg.paste(rgba, mask=rgba.split()[-1])
+                img = bg
+            else:
+                img = img.convert("RGB")
+            # даунскейл только если шире 1080 (не растягиваем маленькие)
+            if img.width > IG_FEED_WIDTH:
+                h = round(img.height * IG_FEED_WIDTH / img.width)
+                img = img.resize((IG_FEED_WIDTH, h), Image.LANCZOS)
+            img.save(
+                out_path,
+                "JPEG",
+                quality=IG_JPEG_QUALITY,
+                optimize=True,
+                progressive=True,
+                subsampling=0,  # 4:4:4 — без потери цветности до загрузки в IG
+            )
+        base = settings.public_base_url.rstrip("/")
+        return f"{base}/media/{out_name}" if base else _public(url)
+    except Exception:  # noqa: BLE001 — при любой ошибке отдаём оригинал
+        return _public(url)
+
+
+def _media_url(url: str) -> str:
+    """URL для Graph API: видео — как есть (публичный), фото — оптимизированное."""
+    return _public(url) if _is_video(url) else _optimize_image(url)
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -83,7 +140,8 @@ def publish(
     token = credentials["access_token"]
     options = options or {}
     post_type = options.get("post_type", "feed")
-    urls = [_public(u) for u in media_urls]
+    # фото оптимизируем под Instagram (1080/JPEG/q92), видео — публичный URL как есть
+    urls = [_media_url(u) for u in media_urls]
 
     if not urls:
         raise InstagramError("Instagram требует хотя бы одно медиа (фото/видео).")
@@ -118,7 +176,7 @@ def publish(
             **common,
         }
         if options.get("cover_url"):
-            params["cover_url"] = _public(options["cover_url"])
+            params["cover_url"] = _optimize_image(options["cover_url"])
         cid = _create_container(ig_user_id, token, params)
         _wait_ready(cid, token)
         return _publish_container(ig_user_id, token, cid)

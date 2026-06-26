@@ -96,6 +96,8 @@ class KanbanOut(BaseModel):
 
 class ColumnsUpdate(BaseModel):
     columns: list[KanbanColumn]
+    # необязательная переразметка чатов (используется при миграции id колонок)
+    placements: dict[str, str] | None = None
 
 
 class PlacementUpdate(BaseModel):

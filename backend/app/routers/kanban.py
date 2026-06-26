@@ -82,10 +82,10 @@ def set_columns(
     board = _get_or_create(db, user, account_id)
     cols = [c.model_dump() for c in payload.columns]
     valid_ids = {c["id"] for c in cols}
-    # подчищаем раскладку: убираем чаты, ссылающиеся на удалённые колонки
-    placements = {
-        k: v for k, v in (board.placements or {}).items() if v in valid_ids
-    }
+    # источник раскладки: явная переразметка (миграция) либо текущая раскладка доски.
+    # В любом случае выкидываем чаты, ссылающиеся на несуществующие колонки.
+    source = payload.placements if payload.placements is not None else (board.placements or {})
+    placements = {k: v for k, v in source.items() if v in valid_ids}
     board.columns = cols
     board.placements = placements
     db.commit()

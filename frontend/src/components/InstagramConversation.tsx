@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import {
   IconArrowLeft,
+  IconClock,
   IconHeart,
   IconMoodSmile,
   IconScript,
@@ -85,11 +86,19 @@ export function InstagramConversation({
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
+    // оптимистично показываем сообщение сразу (с часиками)
+    const tempId = -Date.now();
+    setMessages((ms) => [
+      ...ms,
+      { id: tempId, text, out: true, date: new Date().toISOString(), pending: true },
+    ]);
+    setDraft("");
     try {
       await api.igSend(accountId, igsid, text);
-      setDraft("");
       setMessages(await api.igMessages(accountId, igsid));
     } catch (e) {
+      setMessages((ms) => ms.filter((m) => m.id !== tempId));
+      setDraft(text);
       notifications.show({ color: "red", message: (e as Error).message });
     } finally {
       setSending(false);
@@ -174,11 +183,16 @@ export function InstagramConversation({
                 <Text fz="sm" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {m.text}
                 </Text>
-                {m.date && (
-                  <Text fz={10} mt={2} style={{ opacity: 0.7, textAlign: "right" }}>
-                    {dayjs(m.date).format("HH:mm")}
-                  </Text>
-                )}
+                <Group gap={3} justify="flex-end" wrap="nowrap" mt={2}>
+                  {m.date && (
+                    <Text fz={10} style={{ opacity: 0.7 }}>
+                      {dayjs(m.date).format("HH:mm")}
+                    </Text>
+                  )}
+                  {m.out && m.pending && (
+                    <IconClock size={12} style={{ opacity: 0.75 }} />
+                  )}
+                </Group>
               </Box>
             ))}
             <div ref={bottomRef} />

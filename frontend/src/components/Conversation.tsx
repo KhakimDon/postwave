@@ -11,17 +11,22 @@ import {
   Stack,
   Text,
   TextInput,
+  Transition,
   UnstyledButton,
 } from "@mantine/core";
 import {
   IconArrowLeft,
   IconCheck,
   IconChecks,
+  IconChevronDown,
+  IconClock,
   IconMoodSmile,
   IconPaperclip,
   IconScript,
+  IconSearch,
   IconSend,
   IconUpload,
+  IconX,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
@@ -64,10 +69,48 @@ export function Conversation({
 }) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [lb, setLb] = useState<{ images: string[]; index: number } | null>(null);
   const scripts = useScripts();
   const [scriptsOpen, setScriptsOpen] = useState(false);
+
+  // прокрутка: отслеживаем, у нижней ли границы пользователь
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const switchedRef = useRef(true);
+
+  // поиск по сообщениям внутри чата
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  function scrollToBottom(behavior: ScrollBehavior = "auto") {
+    const vp = viewportRef.current;
+    if (vp) vp.scrollTo({ top: vp.scrollHeight, behavior });
+    else bottomRef.current?.scrollIntoView();
+  }
+
+  // при смене диалога — мгновенно вниз; при новых сообщениях — только если уже внизу
+  useEffect(() => {
+    switchedRef.current = true;
+    setSearchOpen(false);
+    setQuery("");
+  }, [dialog.id]);
+  useEffect(() => {
+    if (switchedRef.current) {
+      scrollToBottom("auto");
+      switchedRef.current = false;
+    } else if (atBottomRef.current) {
+      scrollToBottom("smooth");
+    }
+  }, [messages]);
+
+  // отфильтрованные сообщения при активном поиске
+  const q = query.trim().toLowerCase();
+  const shownMessages =
+    searchOpen && q
+      ? messages.filter((m) => (m.text || "").toLowerCase().includes(q))
+      : messages;
 
   function insertScript(text: string) {
     onDraftChange(draft.trim() ? `${draft} ${text}` : text);
@@ -113,11 +156,6 @@ export function Conversation({
     const index = Math.max(0, imgs.findIndex((m) => m.id === msg.id));
     setLb({ images, index });
   }
-
-  // автоскролл вниз при смене диалога/появлении сообщений
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView();
-  }, [messages, dialog.id]);
 
   return (
     <Box
@@ -184,6 +222,7 @@ export function Conversation({
         wrap="nowrap"
         onClick={onHeaderClick}
         style={{
+          position: "relative",
           borderBottom: "1px solid var(--mantine-color-gray-3)",
           flexShrink: 0,
           cursor: onHeaderClick ? "pointer" : undefined,
@@ -206,7 +245,7 @@ export function Conversation({
           color="blue"
           size={36}
         />
-        <Box style={{ minWidth: 0 }}>
+        <Box style={{ minWidth: 0, flex: 1 }}>
           <Text fw={600} lineClamp={1}>
             {dialog.name}
           </Text>
@@ -216,9 +255,76 @@ export function Conversation({
             </Text>
           )}
         </Box>
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSearchOpen(true);
+          }}
+          title={t("inbox.searchInChat")}
+        >
+          <IconSearch size={18} />
+        </ActionIcon>
+
+        {/* Плавно выезжающий поиск поверх шапки */}
+        <Transition mounted={searchOpen} transition="slide-left" duration={180}>
+          {(styles) => (
+            <Group
+              gap="xs"
+              wrap="nowrap"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                ...styles,
+                position: "absolute",
+                inset: 0,
+                padding: "0 12px",
+                background: "var(--mantine-color-body)",
+                zIndex: 3,
+              }}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                onClick={() => {
+                  setSearchOpen(false);
+                  setQuery("");
+                }}
+              >
+                <IconArrowLeft size={18} />
+              </ActionIcon>
+              <TextInput
+                autoFocus
+                variant="unstyled"
+                style={{ flex: 1 }}
+                placeholder={t("inbox.searchInChat")}
+                value={query}
+                onChange={(e) => setQuery(e.currentTarget.value)}
+              />
+              {query && (
+                <ActionIcon variant="subtle" color="gray" onClick={() => setQuery("")}>
+                  <IconX size={16} />
+                </ActionIcon>
+              )}
+            </Group>
+          )}
+        </Transition>
       </Group>
 
-      <ScrollArea style={{ flex: 1 }} type="auto" bg="var(--mantine-color-gray-0)">
+      <Box style={{ position: "relative", flex: 1, minHeight: 0 }}>
+      <ScrollArea
+        style={{ height: "100%" }}
+        type="auto"
+        bg="var(--mantine-color-gray-0)"
+        viewportRef={viewportRef}
+        onScrollPositionChange={({ y }) => {
+          const vp = viewportRef.current;
+          if (!vp) return;
+          const ab = vp.scrollHeight - vp.clientHeight - y < 80;
+          atBottomRef.current = ab;
+          setAtBottom(ab);
+        }}
+      >
         {loading ? (
           <Stack gap={12} p="md">
             {[42, 60, 48, 66, 38, 54, 50].map((w, i) => (
@@ -233,19 +339,49 @@ export function Conversation({
           </Stack>
         ) : (
           <Stack gap={6} p="md">
-            {messages.map((m) => (
+            {shownMessages.map((m) => (
               <Bubble
                 key={m.id}
                 msg={m}
                 accountId={accountId}
                 dialogId={dialog.id}
                 onOpenImage={openImage}
+                highlight={searchOpen ? q : ""}
               />
             ))}
+            {searchOpen && q && shownMessages.length === 0 && (
+              <Text c="dimmed" fz="sm" ta="center" py="xl">
+                {t("inbox.searchNothing")}
+              </Text>
+            )}
             <div ref={bottomRef} />
           </Stack>
         )}
       </ScrollArea>
+
+      {/* Кнопка «вниз» — когда прокручено вверх */}
+      <Transition mounted={!atBottom} transition="pop" duration={150}>
+        {(styles) => (
+          <ActionIcon
+            variant="filled"
+            color="dark"
+            radius="xl"
+            size="lg"
+            onClick={() => scrollToBottom("smooth")}
+            style={{
+              ...styles,
+              position: "absolute",
+              right: 16,
+              bottom: 16,
+              zIndex: 4,
+              boxShadow: "0 6px 18px -6px rgba(0,0,0,0.5)",
+            }}
+          >
+            <IconChevronDown size={20} />
+          </ActionIcon>
+        )}
+      </Transition>
+      </Box>
 
       <Group
         p="sm"
@@ -410,16 +546,44 @@ function formatPresence(
   }
 }
 
+function highlightText(text: string, q: string): React.ReactNode {
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let k = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) {
+      parts.push(text.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark
+        key={k++}
+        style={{ background: "#ffd84d", color: "#000", borderRadius: 3, padding: "0 1px" }}
+      >
+        {text.slice(idx, idx + q.length)}
+      </mark>,
+    );
+    i = idx + q.length;
+  }
+  return parts;
+}
+
 function Bubble({
   msg,
   accountId,
   dialogId,
   onOpenImage,
+  highlight,
 }: {
   msg: TgMessage;
   accountId: number;
   dialogId: number;
   onOpenImage?: (msg: TgMessage) => void;
+  highlight?: string;
 }) {
   const { t } = useTranslation();
   if (!msg.text && !msg.media_type) return null;
@@ -492,7 +656,7 @@ function Bubble({
           pt={msg.media_type ? 4 : 0}
           style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
         >
-          {msg.text}
+          {highlight ? highlightText(msg.text, highlight) : msg.text}
         </Text>
       )}
       <Group gap={3} justify="flex-end" wrap="nowrap" mt={2} px={6}>
@@ -502,7 +666,9 @@ function Bubble({
           </Text>
         )}
         {msg.out &&
-          (msg.read ? (
+          (msg.pending ? (
+            <IconClock size={13} style={{ opacity: 0.75 }} />
+          ) : msg.read ? (
             <IconChecks size={14} style={{ opacity: 0.95 }} />
           ) : (
             <IconCheck size={13} style={{ opacity: 0.65 }} />

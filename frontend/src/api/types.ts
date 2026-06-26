@@ -78,6 +78,10 @@ export interface TgDialog {
   last_message: string;
   date: string | null;
   online?: boolean;
+  // Чат в архиве Telegram (folder_id == 1).
+  archived?: boolean;
+  // Уведомления чата отключены (mute).
+  muted?: boolean;
   // Сеть диалога (по умолчанию telegram). Для Instagram — "instagram".
   network?: Network;
   // Готовый URL аватара (Instagram); у Telegram аватар грузится по API.
@@ -99,6 +103,7 @@ export interface IgApiMessage {
   text: string;
   out: boolean;
   date: string | null;
+  pending?: boolean; // локально: сообщение отправляется (показываем часики)
 }
 
 export interface TgMessage {
@@ -109,6 +114,7 @@ export interface TgMessage {
   media_type: "photo" | "video" | "audio" | "sticker" | "document" | null;
   read?: boolean; // для исходящих: прочитано ли собеседником
   grouped_id?: number | null; // id альбома (одинаковый у фото одной группы)
+  pending?: boolean; // локально: сообщение отправляется (показываем часики)
 }
 
 export interface TgStatus {

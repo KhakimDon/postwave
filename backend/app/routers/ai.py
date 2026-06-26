@@ -26,6 +26,11 @@ GEMINI_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 )
 
+# Бесплатный фолбэк: когда Gemini недоступен (квота 429 / ошибка / нет ключа) —
+# генерируем через Pollinations (бесплатный, OpenAI-совместимый эндпоинт).
+POLLINATIONS_URL = "https://text.pollinations.ai/openai"
+POLLINATIONS_MODEL = "openai"
+
 LANG_NAMES = {
     "uz": "узбекском (oʻzbek tilida)",
     "ru": "русском",
@@ -105,6 +110,20 @@ class DescribeBody(BaseModel):
     languages: list[str] = []
 
 
+def _clean(text: str) -> str:
+    """Вырезаем содержимое между маркерами и чистим markdown-мусор."""
+    text = (text or "").strip()
+    m = re.search(r"<<<\s*POST\s*>>>(.*?)<<<\s*END\s*>>>", text, re.S | re.I)
+    if m:
+        text = m.group(1)
+    else:
+        # фолбэк: режем всё до маркера POST
+        text = re.split(r"<<<\s*POST\s*>>>", text, flags=re.I)[-1]
+    text = re.sub(r"<<<\s*(POST|END)\s*>>>", "", text, flags=re.I)
+    text = re.sub(r"\*+", "", text)
+    return text.strip()
+
+
 def _call_gemini(parts: list[dict]) -> str:
     payload = {
         "contents": [{"parts": parts}],
@@ -118,36 +137,57 @@ def _call_gemini(parts: list[dict]) -> str:
         GEMINI_URL, headers={"x-goog-api-key": settings.gemini_api_key}, json=payload, timeout=90
     )
     if r.status_code >= 400:
-        detail = r.text[:300]
-        if r.status_code == 429:
-            detail = "исчерпана квота Gemini — включите billing на проекте."
-        raise HTTPException(400, f"AI: {detail}")
-    try:
-        gen = r.json()["candidates"][0]["content"]["parts"]
-        text = "".join(p.get("text", "") for p in gen).strip()
-    except Exception:  # noqa: BLE001
-        raise HTTPException(400, "AI не вернул текст. Попробуйте ещё раз.")
+        raise RuntimeError(f"gemini {r.status_code}: {r.text[:200]}")
+    gen = r.json()["candidates"][0]["content"]["parts"]
+    text = "".join(p.get("text", "") for p in gen).strip()
     if not text:
-        raise HTTPException(400, "AI вернул пустой ответ. Попробуйте ещё раз.")
+        raise RuntimeError("gemini empty")
+    return _clean(text)
 
-    # вырезаем только содержимое между маркерами (отбрасывая рассуждения модели)
-    m = re.search(r"<<<\s*POST\s*>>>(.*?)<<<\s*END\s*>>>", text, re.S | re.I)
-    if m:
-        text = m.group(1)
-    else:
-        # фолбэк: режем всё до маркера POST / до первой строки с эмодзи-заголовком
-        text = re.split(r"<<<\s*POST\s*>>>", text, flags=re.I)[-1]
-    # чистим остатки маркеров и markdown-звёздочки
-    text = re.sub(r"<<<\s*(POST|END)\s*>>>", "", text, flags=re.I)
-    text = re.sub(r"\*+", "", text)
-    return text.strip()
+
+def _call_pollinations(user_content) -> str:
+    """Бесплатная генерация через Pollinations (OpenAI-совместимый чат).
+    user_content — строка либо список частей OpenAI-формата (text / image_url).
+    Анонимный бесплатный сервис иногда отдаёт 500 — делаем несколько попыток."""
+    payload = {
+        "model": POLLINATIONS_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0.9,
+    }
+    last = ""
+    for _ in range(3):
+        try:
+            r = httpx.post(POLLINATIONS_URL, json=payload, timeout=120)
+            if r.status_code < 400:
+                text = (r.json()["choices"][0]["message"]["content"] or "").strip()
+                if text:
+                    return _clean(text)
+                last = "empty"
+            else:
+                last = f"{r.status_code}: {r.text[:120]}"
+        except Exception as e:  # noqa: BLE001
+            last = str(e)[:120]
+    raise RuntimeError(f"pollinations {last}")
+
+
+def _generate(gemini_parts: list[dict], poll_content) -> str:
+    """Сначала Gemini (если есть ключ), при любой ошибке/квоте — бесплатный Pollinations."""
+    if settings.gemini_api_key:
+        try:
+            return _call_gemini(gemini_parts)
+        except Exception:  # noqa: BLE001 — падаем на бесплатный фолбэк
+            pass
+    try:
+        return _call_pollinations(poll_content)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"AI недоступен: {e}")
 
 
 @router.post("/describe")
 async def describe(body: DescribeBody, user: User = Depends(get_current_user)):
-    if not settings.gemini_api_key:
-        raise HTTPException(400, "Gemini API не настроен (GEMINI_API_KEY в .env).")
-
     url = body.url.strip()
     image_urls = [u.strip() for u in (body.image_urls or []) if u.strip()]
     if body.image_url.strip() and not image_urls:
@@ -156,17 +196,18 @@ async def describe(body: DescribeBody, user: User = Depends(get_current_user)):
     style = _style(body.languages)
     hint = f"\nДополнительные пожелания/контекст: {text}" if text else ""
 
-    # 1) по ссылке
+    # 1) по ссылке (Gemini открывает url через url_context; Pollinations — по тексту ссылки)
     if url:
         prompt = (
             f"Открой ссылку на товар и пойми, что это (название, особенности, цена): {url}{hint}\n\n"
             + style
         )
-        return {"caption": _call_gemini([{"text": prompt}])}
+        return {"caption": _generate([{"text": prompt}], prompt)}
 
     # 2) по фото (vision) — отправляем ВСЕ картинки (до 10)
     if image_urls:
-        parts: list[dict] = []
+        gemini_parts: list[dict] = []
+        poll_content: list[dict] = []
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as cl:
             for u in image_urls[:10]:
                 try:
@@ -176,20 +217,23 @@ async def describe(body: DescribeBody, user: User = Depends(get_current_user)):
                     mime = ir.headers.get("content-type", "image/jpeg").split(";")[0].strip()
                     if not mime.startswith("image/"):
                         mime = "image/jpeg"
-                    parts.append(
-                        {"inlineData": {"mimeType": mime, "data": base64.b64encode(ir.content).decode()}}
+                    b64 = base64.b64encode(ir.content).decode()
+                    gemini_parts.append({"inlineData": {"mimeType": mime, "data": b64}})
+                    poll_content.append(
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
                     )
                 except Exception:  # noqa: BLE001
                     continue
-        if not parts:
+        if not gemini_parts:
             raise HTTPException(400, "Не удалось загрузить картинки.")
         prompt = (
             "На фото — один и тот же товар (несколько ракурсов/фото). Изучи ВСЕ "
             "снимки, определи бренд/тип/особенности/цвет/детали и сделай продающий "
             f"пост.{hint}\n\n" + style
         )
-        parts.append({"text": prompt})
-        return {"caption": _call_gemini(parts)}
+        gemini_parts.append({"text": prompt})
+        poll_content.insert(0, {"type": "text", "text": prompt})
+        return {"caption": _generate(gemini_parts, poll_content)}
 
     # 3) по тексту-промпту
     if text:
@@ -197,6 +241,6 @@ async def describe(body: DescribeBody, user: User = Depends(get_current_user)):
             f"Вот название/описание товара или пожелания пользователя: {text}\n\n"
             "Сделай продающий пост по этим данным.\n\n" + style
         )
-        return {"caption": _call_gemini([{"text": prompt}])}
+        return {"caption": _generate([{"text": prompt}], prompt)}
 
     raise HTTPException(400, "Нет данных: дайте ссылку, картинку или текст.")

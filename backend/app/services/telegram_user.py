@@ -418,13 +418,28 @@ async def event_stream(session: str):
 async def list_dialogs(session: str, limit: int = 50, offset: int = 0) -> list[dict]:
     """Диалоги по убыванию свежести. offset — для бесконечной подгрузки."""
 
+    import datetime as _dt
+
     async def op(client: TelegramClient):
         out = []
         i = 0
-        async for d in client.iter_dialogs(limit=limit + offset):
+        now = _dt.datetime.now(_dt.timezone.utc)
+        # archived=None → отдаёт и архив, и основную папку (помечаем флагом archived)
+        async for d in client.iter_dialogs(limit=limit + offset, archived=None):
             if i < offset:
                 i += 1
                 continue
+            # архив: folder_id == 1
+            archived = getattr(d, "folder_id", None) == 1
+            # mute: notify_settings.mute_until в будущем
+            ns = getattr(getattr(d, "dialog", None), "notify_settings", None)
+            mute_until = getattr(ns, "mute_until", None)
+            muted = False
+            if mute_until is not None:
+                try:
+                    muted = mute_until > now
+                except TypeError:
+                    muted = bool(mute_until)
             out.append(
                 {
                     "id": d.id,
@@ -437,6 +452,8 @@ async def list_dialogs(session: str, limit: int = 50, offset: int = 0) -> list[d
                     "date": d.date.isoformat() if d.date else None,
                     "online": bool(d.is_user)
                     and isinstance(getattr(d.entity, "status", None), UserStatusOnline),
+                    "archived": archived,
+                    "muted": muted,
                 }
             )
             i += 1

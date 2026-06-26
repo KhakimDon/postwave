@@ -8,24 +8,57 @@ import {
   Loader,
   Modal,
   Popover,
+  SegmentedControl,
+  Select,
   SimpleGrid,
   Stack,
   Text,
   TextInput,
   ActionIcon,
 } from "@mantine/core";
+import { MonthPickerInput, DatePickerInput } from "@mantine/dates";
 import {
   IconPlus,
   IconTrash,
   IconGripVertical,
   IconBrandTelegram,
   IconBrandInstagram,
+  IconFilter,
+  IconCalendar,
 } from "@tabler/icons-react";
+import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { ChatAvatar } from "./ChatAvatar";
 import type { KanbanColumn, TgDialog } from "../api/types";
 import { COLUMN_COLORS, MAX_COLS, MIN_COLS, columnIdOf } from "../kanban";
+
+type FunnelMode = "month" | "range" | "days";
+type FunnelFilter = {
+  mode: FunnelMode;
+  month: string | null; // "YYYY-MM"
+  from: string | null; // ISO date
+  to: string | null;
+  days: number;
+};
+const FUNNEL_FILTER_KEY = "pw_funnel_filter";
+
+function loadFunnelFilter(): FunnelFilter {
+  try {
+    const raw = localStorage.getItem(FUNNEL_FILTER_KEY);
+    if (raw) return { days: 30, ...JSON.parse(raw) };
+  } catch {
+    /* ignore */
+  }
+  // по умолчанию — текущий месяц
+  return {
+    mode: "month",
+    month: dayjs().format("YYYY-MM"),
+    from: null,
+    to: null,
+    days: 30,
+  };
+}
 
 export function InboxKanban({
   accountId,
@@ -41,6 +74,7 @@ export function InboxKanban({
   onOpenChat,
   settingsOpen,
   onSettingsClose,
+  topSlot,
 }: {
   accountId: number;
   dialogs: TgDialog[];
@@ -55,22 +89,87 @@ export function InboxKanban({
   onOpenChat: (d: TgDialog) => void;
   settingsOpen: boolean;
   onSettingsClose: () => void;
+  topSlot?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
+
+  // Фильтр воронки по дате (месяц / период / последние N дней), хранится в localStorage
+  const [filter, setFilter] = useState<FunnelFilter>(loadFunnelFilter);
+  const [filterOpen, setFilterOpen] = useState(false);
+  useEffect(() => {
+    try {
+      localStorage.setItem(FUNNEL_FILTER_KEY, JSON.stringify(filter));
+    } catch {
+      /* ignore */
+    }
+  }, [filter]);
+
+  // Активный диапазон [начало, конец] в мс по текущему фильтру
+  const range = useMemo<[number, number] | null>(() => {
+    if (filter.mode === "month" && filter.month) {
+      const m = dayjs(filter.month + "-01");
+      return [m.startOf("month").valueOf(), m.endOf("month").valueOf()];
+    }
+    if (filter.mode === "range" && filter.from && filter.to) {
+      return [
+        dayjs(filter.from).startOf("day").valueOf(),
+        dayjs(filter.to).endOf("day").valueOf(),
+      ];
+    }
+    if (filter.mode === "days") {
+      return [
+        dayjs().subtract(filter.days - 1, "day").startOf("day").valueOf(),
+        dayjs().endOf("day").valueOf(),
+      ];
+    }
+    return null;
+  }, [filter]);
+
+  // Чаты, попадающие в выбранный период (без даты — не прячем)
+  const viewDialogs = useMemo(() => {
+    if (!range) return dialogs;
+    return dialogs.filter((d) => {
+      if (!d.date) return true;
+      const ts = dayjs(d.date).valueOf();
+      return ts >= range[0] && ts <= range[1];
+    });
+  }, [dialogs, range]);
 
   const firstId = columns[0]?.id;
   const grouped = useMemo(() => {
     const m: Record<string, TgDialog[]> = {};
     columns.forEach((c) => (m[c.id] = []));
     if (!firstId) return m;
-    dialogs.forEach((d) => {
+    viewDialogs.forEach((d) => {
       const cid = columnIdOf(d.id, columns, placements) ?? firstId;
       (m[cid] ?? m[firstId]).push(d);
     });
     return m;
-  }, [dialogs, placements, columns, firstId]);
+  }, [viewDialogs, placements, columns, firstId]);
+
+  // Метрики воронки. Лид — чат, который вышел из первой колонки («Все чаты»),
+  // т.е. хотя бы «Заинтересованные». Конверсия = оплаты / лиды.
+  const total = viewDialogs.length;
+  const leadCount = columns
+    .slice(1)
+    .reduce((s, c) => s + (grouped[c.id]?.length ?? 0), 0);
+  const wonId = columns[columns.length - 1]?.id;
+  const wonCount = wonId ? grouped[wonId]?.length ?? 0 : 0;
+  const wonColor = columns[columns.length - 1]?.color ?? "#38d9a9";
+  const convRate = leadCount > 0 ? Math.round((wonCount / leadCount) * 100) : 0;
+
+  // Подпись текущего периода на кнопке фильтра
+  const periodLabel = useMemo(() => {
+    if (filter.mode === "month" && filter.month)
+      return dayjs(filter.month + "-01").format("MMM YYYY");
+    if (filter.mode === "range" && filter.from && filter.to)
+      return `${dayjs(filter.from).format("DD.MM")}–${dayjs(filter.to).format("DD.MM")}`;
+    if (filter.mode === "days")
+      return `${filter.days} ${t("inbox.funnelDaysSuffix")}`;
+    return t("inbox.funnelAllTime");
+  }, [filter, t]);
 
   // бесконечный скролл: подгружаем чаты у нижней границы доски
   function onScroll(e: React.UIEvent<HTMLDivElement>) {
@@ -105,13 +204,138 @@ export function InboxKanban({
             paddingBottom: 8,
           }}
         >
+          {/* Поиск/фильтры — прокручиваются вместе с доской */}
+          {topSlot}
+          {/* Баннер воронки: всего лидов → дошло до оплаты = конверсия */}
+          <Group
+            justify="space-between"
+            wrap="nowrap"
+            px={12}
+            py={8}
+            mb={8}
+            style={{
+              borderRadius: 14,
+              background: "var(--surface-2)",
+              border: "1px solid var(--border-1)",
+            }}
+          >
+            <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+              <Text fw={800} fz="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.4 }}>
+                {t("inbox.funnelLabel")}
+              </Text>
+              <Popover
+                opened={filterOpen}
+                onChange={setFilterOpen}
+                position="bottom-start"
+                withArrow
+                shadow="md"
+                width={260}
+              >
+                <Popover.Target>
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="gray"
+                    leftSection={<IconFilter size={13} />}
+                    rightSection={<IconCalendar size={13} />}
+                    onClick={() => setFilterOpen((o) => !o)}
+                  >
+                    {periodLabel}
+                  </Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Stack gap="xs">
+                    <SegmentedControl
+                      size="xs"
+                      fullWidth
+                      value={filter.mode}
+                      onChange={(v) =>
+                        setFilter((f) => ({ ...f, mode: v as FunnelMode }))
+                      }
+                      data={[
+                        { value: "month", label: t("inbox.funnelModeMonth") },
+                        { value: "range", label: t("inbox.funnelModeRange") },
+                        { value: "days", label: t("inbox.funnelModeDays") },
+                      ]}
+                    />
+                    {filter.mode === "month" && (
+                      <MonthPickerInput
+                        size="xs"
+                        value={filter.month ? new Date(filter.month + "-01") : null}
+                        onChange={(d) =>
+                          setFilter((f) => ({
+                            ...f,
+                            month: d ? dayjs(d).format("YYYY-MM") : null,
+                          }))
+                        }
+                        valueFormat="MMMM YYYY"
+                        clearable={false}
+                      />
+                    )}
+                    {filter.mode === "range" && (
+                      <DatePickerInput
+                        type="range"
+                        size="xs"
+                        valueFormat="DD.MM.YYYY"
+                        placeholder={t("inbox.funnelRangePh")}
+                        value={[
+                          filter.from ? new Date(filter.from) : null,
+                          filter.to ? new Date(filter.to) : null,
+                        ]}
+                        onChange={(v) =>
+                          setFilter((f) => ({
+                            ...f,
+                            from: v[0] ? dayjs(v[0]).format("YYYY-MM-DD") : null,
+                            to: v[1] ? dayjs(v[1]).format("YYYY-MM-DD") : null,
+                          }))
+                        }
+                      />
+                    )}
+                    {filter.mode === "days" && (
+                      <Select
+                        size="xs"
+                        allowDeselect={false}
+                        value={String(filter.days)}
+                        onChange={(v) =>
+                          setFilter((f) => ({ ...f, days: Number(v) || 30 }))
+                        }
+                        data={[5, 10, 20, 30, 40, 60].map((n) => ({
+                          value: String(n),
+                          label: `${n} ${t("inbox.funnelDaysSuffix")}`,
+                        }))}
+                      />
+                    )}
+                  </Stack>
+                </Popover.Dropdown>
+              </Popover>
+            </Group>
+            <Group gap={8} wrap="nowrap">
+              <Text fz="sm" fw={700}>
+                {leadCount} {t("inbox.funnelLeadWord")}
+              </Text>
+              <Text fz="sm" c="dimmed">
+                →
+              </Text>
+              <Text fz="sm" fw={800} style={{ color: wonColor }}>
+                {wonCount} {t("inbox.funnelPaidWord")}
+              </Text>
+              <Badge
+                size="lg"
+                radius="sm"
+                variant="light"
+                style={{ background: `${wonColor}22`, color: wonColor }}
+              >
+                {convRate}%
+              </Badge>
+            </Group>
+          </Group>
+
           <Box
             style={{
               display: "flex",
               gap: 12,
               // stretch — все колонки тянутся до высоты самой заполненной
               alignItems: "stretch",
-              minHeight: "100%",
             }}
           >
             {columns.map((col) => {
@@ -137,6 +361,8 @@ export function InboxKanban({
                     width: 272,
                     flexShrink: 0,
                     minHeight: 120,
+                    display: "flex",
+                    flexDirection: "column",
                     background: isOver ? "var(--accent-soft)" : "var(--surface-1)",
                     border: `1px solid ${
                       isOver ? "var(--accent-border)" : "var(--border-1)"
@@ -193,6 +419,22 @@ export function InboxKanban({
                       </Text>
                     )}
                   </Stack>
+                  {/* Футер колонки: количество + доля от всех лидов */}
+                  <Group
+                    justify="space-between"
+                    wrap="nowrap"
+                    px={4}
+                    pt={6}
+                    mt="auto"
+                    style={{ borderTop: "1px solid var(--border-1)" }}
+                  >
+                    <Text fz={10} fw={700} c="dimmed">
+                      {items.length}
+                    </Text>
+                    <Text fz={10} fw={800} style={{ color: col.color ?? "var(--mantine-color-dimmed)" }}>
+                      {total > 0 ? Math.round((items.length / total) * 100) : 0}%
+                    </Text>
+                  </Group>
                 </Box>
               );
             })}

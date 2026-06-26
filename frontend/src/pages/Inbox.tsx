@@ -39,6 +39,8 @@ import {
   IconCheck,
   IconLayoutGrid,
   IconChevronDown,
+  IconBellOff,
+  IconArchive,
 } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
@@ -248,6 +250,7 @@ export function Inbox() {
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   // выезжающая панель чата в табе «Канбан»
   const [kanbanChatOpen, setKanbanChatOpen] = useState(false);
   // активная соцсеть инбокса (показываем только подключённые)
@@ -510,7 +513,40 @@ export function Inbox() {
     setBoardLoading(true);
     try {
       const b = await api.kanbanGet(id);
-      if (b.columns && b.columns.length >= MIN_COLS) {
+      // Авто-обновление нетронутой дефолт-доски до актуальной воронки.
+      // Узнаём дефолт по набору id (старый и текущий) и переносим названия/цвета,
+      // не трогая раскладку (id чатов ремапятся со старых на новые).
+      const DEFAULT_SIGNATURES = [
+        ["all", "interested", "ordering", "ordered"], // самый старый
+        ["new", "interested", "invoice", "paid"], // воронка
+      ];
+      const ID_MAP: Record<string, string> = {
+        all: "new",
+        ordering: "invoice",
+        ordered: "paid",
+      };
+      const ids = (b.columns || []).map((c) => c.id);
+      const isKnownDefault = DEFAULT_SIGNATURES.some(
+        (sig) => sig.length === ids.length && sig.every((x, i) => x === ids[i]),
+      );
+
+      if (isKnownDefault) {
+        const def = defaultColumns(t);
+        const remapped: Record<string, string> = {};
+        for (const [k, v] of Object.entries(b.placements || {})) {
+          remapped[k] = ID_MAP[v] ?? v;
+        }
+        setColumns(def);
+        setPlacements(remapped);
+        // пишем в БД только если колонки реально поменялись (иначе лишний запрос)
+        if (JSON.stringify(b.columns) !== JSON.stringify(def)) {
+          try {
+            await api.kanbanSetColumns(id, def, remapped);
+          } catch {
+            /* не критично — применится при следующем сохранении */
+          }
+        }
+      } else if (b.columns && b.columns.length >= MIN_COLS) {
         // у старых досок цвета могло не быть — подставим из палитры
         setColumns(
           b.columns.map((c, i) => ({
@@ -692,11 +728,28 @@ export function Inbox() {
     if (accountId == null || !activeDialog || !draft.trim()) return;
     setSending(true);
     const text = draft.trim();
+    // оптимистично показываем сообщение сразу (с часиками), id временный
+    const tempId = -Date.now();
+    setMessages((ms) => [
+      ...ms,
+      {
+        id: tempId,
+        text,
+        out: true,
+        date: new Date().toISOString(),
+        media_type: null,
+        read: false,
+        pending: true,
+      },
+    ]);
+    setDraft("");
     try {
       await api.tgUserSend(accountId, activeDialog.id, text);
-      setDraft("");
       await refreshMessages();
     } catch (e) {
+      // не удалось — убираем оптимистичное и возвращаем текст
+      setMessages((ms) => ms.filter((m) => m.id !== tempId));
+      setDraft(text);
       notifications.show({ color: "red", message: (e as Error).message });
     } finally {
       setSending(false);
@@ -750,6 +803,66 @@ export function Inbox() {
       </Box>
     );
   }
+
+  // Панель поиска и фильтров — общая для обоих табов. В чате стоит сверху,
+  // в канбане прокручивается вместе с доской (передаётся внутрь скролла).
+  const filtersPanel = (
+    <Group mb="md" gap="sm" wrap="wrap" style={{ flexShrink: 0 }}>
+      <TextInput
+        flex={1}
+        miw={180}
+        size="xs"
+        placeholder={t("inbox.searchPh")}
+        leftSection={<IconSearch size={14} />}
+        value={search}
+        onChange={(e) => setSearch(e.currentTarget.value)}
+      />
+      <Select
+        size="xs"
+        w={170}
+        value={filterCol}
+        onChange={(v) => setFilterCol(v ?? "__all__")}
+        allowDeselect={false}
+        comboboxProps={{ withinPortal: true }}
+        data={[
+          { value: "__all__", label: t("inbox.allColumns") },
+          ...columns.map((c) => ({ value: c.id, label: c.title })),
+        ]}
+        renderOption={({ option }) => {
+          const col = columns.find((c) => c.id === option.value);
+          return (
+            <Group gap={8} wrap="nowrap">
+              <Box
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: col?.color ?? "transparent",
+                  border: col ? "none" : "1px solid var(--mantine-color-gray-4)",
+                  flexShrink: 0,
+                }}
+              />
+              <Text fz="sm">{option.label}</Text>
+            </Group>
+          );
+        }}
+      />
+      <Select
+        size="xs"
+        w={140}
+        value={dateFilter}
+        onChange={(v) => setDateFilter(v ?? "all")}
+        allowDeselect={false}
+        comboboxProps={{ withinPortal: true }}
+        data={[
+          { value: "all", label: t("inbox.dateAll") },
+          { value: "today", label: t("inbox.dateToday") },
+          { value: "7d", label: t("inbox.date7d") },
+          { value: "30d", label: t("inbox.date30d") },
+        ]}
+      />
+    </Group>
+  );
 
   return (
     <Box
@@ -880,62 +993,8 @@ export function Inbox() {
         </Group>
       </Group>
 
-      {/* Панель поиска и фильтров (общая для обоих табов) */}
-      <Group mb="md" gap="sm" wrap="wrap" style={{ flexShrink: 0 }}>
-        <TextInput
-          flex={1}
-          miw={180}
-          size="xs"
-          placeholder={t("inbox.searchPh")}
-          leftSection={<IconSearch size={14} />}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-        <Select
-          size="xs"
-          w={170}
-          value={filterCol}
-          onChange={(v) => setFilterCol(v ?? "__all__")}
-          allowDeselect={false}
-          comboboxProps={{ withinPortal: true }}
-          data={[
-            { value: "__all__", label: t("inbox.allColumns") },
-            ...columns.map((c) => ({ value: c.id, label: c.title })),
-          ]}
-          renderOption={({ option }) => {
-            const col = columns.find((c) => c.id === option.value);
-            return (
-              <Group gap={8} wrap="nowrap">
-                <Box
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    background: col?.color ?? "transparent",
-                    border: col ? "none" : "1px solid var(--mantine-color-gray-4)",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text fz="sm">{option.label}</Text>
-              </Group>
-            );
-          }}
-        />
-        <Select
-          size="xs"
-          w={140}
-          value={dateFilter}
-          onChange={(v) => setDateFilter(v ?? "all")}
-          allowDeselect={false}
-          comboboxProps={{ withinPortal: true }}
-          data={[
-            { value: "all", label: t("inbox.dateAll") },
-            { value: "today", label: t("inbox.dateToday") },
-            { value: "7d", label: t("inbox.date7d") },
-            { value: "30d", label: t("inbox.date30d") },
-          ]}
-        />
-      </Group>
+      {/* В чате панель фильтров сверху; в канбане — внутри скролла доски */}
+      {view !== "kanban" && filtersPanel}
 
       {view === "kanban" ? (
         accountId != null && (
@@ -958,6 +1017,7 @@ export function Inbox() {
               dialogs={kanbanDialogs}
               columns={columns}
               placements={placements}
+              topSlot={filtersPanel}
               loading={loadingDialogs || boardLoading}
               loadingMore={loadingMore}
               hasMore={hasMore}
@@ -1087,20 +1147,79 @@ export function Inbox() {
               }}
               viewportRef={dialogViewportRef}
             >
-              {tgFiltered.map((d) => (
-                <DialogRow
-                  key={d.id}
-                  dialog={d}
-                  active={activeDialog?.id === d.id}
-                  avatarUrl={
-                    accountId != null
-                      ? api.tgUserAvatarUrl(accountId, d.id)
-                      : undefined
-                  }
-                  dotColor={colorOf(d.id, columns, placements)}
-                  onClick={() => openDialog(d)}
-                />
-              ))}
+              {/* Архив — отдельным блоком сверху, раскрывается по клику */}
+              {tgFiltered.some((d) => d.archived) && (
+                <>
+                  <Group
+                    gap="sm"
+                    p="sm"
+                    wrap="nowrap"
+                    className="pw-dialog-row"
+                    onClick={() => setArchiveOpen((o) => !o)}
+                    style={{
+                      cursor: "pointer",
+                      borderBottom: "1px solid var(--border-1)",
+                    }}
+                  >
+                    <ThemeIcon variant="light" color="gray" radius="xl" size={44}>
+                      <IconArchive size={20} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1, minWidth: 0 }}>
+                      <Text fw={600} fz="sm">
+                        {t("inbox.archive")}
+                      </Text>
+                      <Text c="dimmed" fz="xs">
+                        {t("inbox.archiveCount", {
+                          count: tgFiltered.filter((d) => d.archived).length,
+                        })}
+                      </Text>
+                    </Box>
+                    <IconChevronDown
+                      size={16}
+                      style={{
+                        color: "var(--mantine-color-dimmed)",
+                        transform: archiveOpen ? "rotate(180deg)" : "none",
+                        transition: "transform 160ms ease",
+                      }}
+                    />
+                  </Group>
+                  {archiveOpen &&
+                    tgFiltered
+                      .filter((d) => d.archived)
+                      .map((d) => (
+                        <DialogRow
+                          key={d.id}
+                          dialog={d}
+                          active={activeDialog?.id === d.id}
+                          avatarUrl={
+                            accountId != null
+                              ? api.tgUserAvatarUrl(accountId, d.id)
+                              : undefined
+                          }
+                          dotColor={colorOf(d.id, columns, placements)}
+                          onClick={() => openDialog(d)}
+                        />
+                      ))}
+                </>
+              )}
+
+              {/* Основные чаты (не в архиве) */}
+              {tgFiltered
+                .filter((d) => !d.archived)
+                .map((d) => (
+                  <DialogRow
+                    key={d.id}
+                    dialog={d}
+                    active={activeDialog?.id === d.id}
+                    avatarUrl={
+                      accountId != null
+                        ? api.tgUserAvatarUrl(accountId, d.id)
+                        : undefined
+                    }
+                    dotColor={colorOf(d.id, columns, placements)}
+                    onClick={() => openDialog(d)}
+                  />
+                ))}
               {loadingMore && (
                 <Center py="sm">
                   <Loader size="xs" />
@@ -1308,13 +1427,20 @@ function DialogRow({
           <Text fw={600} fz="sm" lineClamp={1}>
             {dialog.name || t("inbox.noName")}
           </Text>
+          {dialog.muted && (
+            <IconBellOff
+              size={13}
+              style={{ color: "var(--mantine-color-dimmed)", flexShrink: 0 }}
+            />
+          )}
         </Group>
         <Text c="dimmed" fz="xs" lineClamp={1}>
           {dialog.last_message || "—"}
         </Text>
       </Box>
       {dialog.unread > 0 && (
-        <Badge size="sm" circle variant="filled" color="brand">
+        // у замьюченных чатов бейдж серый (как в Telegram)
+        <Badge size="sm" circle variant="filled" color={dialog.muted ? "gray" : "brand"}>
           {dialog.unread}
         </Badge>
       )}

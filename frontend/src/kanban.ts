@@ -15,12 +15,14 @@ export const COLUMN_COLORS = [
   "#ffd43b", // жёлтый
 ];
 
+// Дефолтная воронка продаж: новый лид → интерес → счёт → оплата.
+// Первая колонка — куда падают все новые чаты; последняя — «цель» (конверсия).
 export function defaultColumns(t: (k: string) => string): KanbanColumn[] {
   return [
-    { id: "all", title: t("inbox.colAll"), color: COLUMN_COLORS[0] },
-    { id: "interested", title: t("inbox.colInterested"), color: COLUMN_COLORS[1] },
-    { id: "ordering", title: t("inbox.colOrdering"), color: COLUMN_COLORS[4] },
-    { id: "ordered", title: t("inbox.colOrdered"), color: COLUMN_COLORS[3] },
+    { id: "new", title: t("inbox.colAll"), color: COLUMN_COLORS[1] },
+    { id: "interested", title: t("inbox.colInterested"), color: COLUMN_COLORS[2] },
+    { id: "invoice", title: t("inbox.colOrdering"), color: COLUMN_COLORS[4] },
+    { id: "paid", title: t("inbox.colOrdered"), color: COLUMN_COLORS[3] },
   ];
 }
 

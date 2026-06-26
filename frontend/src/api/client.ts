@@ -210,10 +210,14 @@ export const api = {
   // CRM-канбан (доска инбокса, общая для всех устройств)
   kanbanGet: (accountId: number) =>
     request<KanbanBoard>(`/kanban/${accountId}`),
-  kanbanSetColumns: (accountId: number, columns: KanbanColumn[]) =>
+  kanbanSetColumns: (
+    accountId: number,
+    columns: KanbanColumn[],
+    placements?: Record<string, string>
+  ) =>
     request<KanbanBoard>(`/kanban/${accountId}/columns`, {
       method: "PUT",
-      body: JSON.stringify({ columns }),
+      body: JSON.stringify(placements ? { columns, placements } : { columns }),
     }),
   kanbanSetPlacement: (
     accountId: number,
