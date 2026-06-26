@@ -1,0 +1,32 @@
+# Postwave — отдельный compose-проект (не пересекается с Explat-стеком).
+# web слушает только на 127.0.0.1; наружу выводится host-nginx'ом по домену + SSL.
+name: postwave
+
+services:
+  postwave-api:
+    build: ./backend
+    container_name: postwave-api
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      # БД и медиа — в volume'ах (переживают пересборку контейнера).
+      - DATABASE_URL=sqlite:////data/smm.db
+    volumes:
+      - postwave_data:/data
+      - postwave_uploads:/app/uploads
+    expose:
+      - "8000"
+
+  postwave-web:
+    build: ./frontend
+    container_name: postwave-web
+    restart: unless-stopped
+    depends_on:
+      - postwave-api
+    ports:
+      - "127.0.0.1:8092:80"
+
+volumes:
+  postwave_data:
+  postwave_uploads:

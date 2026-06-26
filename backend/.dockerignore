@@ -1,0 +1,11 @@
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+smm.db
+*.session
+*.session-journal
+uploads
+.env
+.env.example
